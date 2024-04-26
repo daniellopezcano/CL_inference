@@ -1,0 +1,85 @@
+method: random
+
+metric:
+    name: loss
+    goal: minimize
+     
+parameters:
+
+    # -------------------- global -------------------- #
+    
+    path_save :
+        value : "/cosmos_storage/dlopez/Projects/CL_inference/models/only_inference_models_v1v2_kmax_0.6_box_3000"
+        
+    # -------------------- dataset -------------------- #
+        
+    path_load               :
+        value : "/cosmos_storage/dlopez/Projects/CL_inference/DATASETS/DATASET_kmax_0.6/"
+    list_model_names        :
+        value : ["Model_vary_1", "Model_vary_2"]
+    normalize               :
+        value : True
+    NN_augs_batch           :
+        value : 1
+    add_noise_Pk            :
+        value : "cosmic_var_gauss"
+    kmax                    :
+        value : 0.6
+    boxsize_cosmic_variance :
+        value : 3000
+    
+    # -------------------- arquitechture -------------------- #
+        
+    train_mode              :
+        value : "train_inference_fully_supervised"
+    inference_loss          :
+        value : "MultivariateNormal" # this will affect the network arquitechture
+    load_encoder_model_path :
+        value : None
+    input_encoder           :
+        value : 100
+    hidden_layers_encoder   :
+        values : [[64, 64], [100, 100], [64, 64, 64], [100, 100, 64], [64, 64, 64, 64], [100, 100, 100, 100]]
+    output_encoder          :
+        values : [64, 32]
+    hidden_layers_projector :
+        value : []
+    output_projector        :
+        value : 0
+    hidden_layers_inference :
+        values : [[64, 64], [100, 100], [64, 64, 64], [100, 100, 64], [64, 64, 64, 64], [100, 100, 100, 100]]
+    NN_params_out           :
+        value : 5
+
+    # -------------------- training -------------------- #
+    
+    NN_epochs            :
+        value : 300
+    NN_batches_per_epoch :
+        value : 512
+    batch_size           :
+        value : 256
+    weight_decay         :
+        value : 0.
+    seed_mode            :
+        value : "random"
+    seed                 :
+        value : 0
+    lr : 
+        distribution: q_log_uniform_values
+        max: 1e-2
+        min: 1e-6
+        q: 1e-05
+    
+    clip_grad_norm :
+        distribution: uniform
+        max: 100
+        min: 0.001
+
+    # -------------------- loss -------------------- # 
+
+    CL_loss              :
+        value : ""
+    loss_hyperparameters :
+        value: {'c_inference': 100.}
+    

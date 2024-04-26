@@ -23,7 +23,7 @@ def bacco_emulator(baccoemu_input, kmin=-2.3, kmax=0.6, N_kk=100, mode=None, ret
     
     if constant_density_100points:
         N_kk = int(((kmax-kmin)/(0.6+2.3))*100)
-    
+        
     if mode == None:
         mode='baryons'
     
@@ -71,7 +71,8 @@ def generate_baccoemu_dataset(
     seed = 0,
     path_save = None,
     model_name = "ModelA",
-    mode_baccoemu = None
+    mode_baccoemu = None,
+    kmax=0.6
 ):
     
     baccoemu_input = {}
@@ -122,7 +123,7 @@ def generate_baccoemu_dataset(
     # ------------------------ generate observations with baccoemu ------------------------ #
     
     xx = bacco_emulator(
-        baccoemu_input, kmin=-2.3, kmax=0.6, N_kk=100, return_kk=False, mode=mode_baccoemu, constant_density_100points=True
+        baccoemu_input, kmin=-2.3, kmax=kmax, return_kk=False, mode=mode_baccoemu, constant_density_100points=True
     )
 
     xx = np.reshape(xx, (NN_samples_cosmo, NN_samples_augs, xx.shape[-1]))

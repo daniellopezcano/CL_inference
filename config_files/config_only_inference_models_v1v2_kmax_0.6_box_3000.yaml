@@ -1,0 +1,48 @@
+# -------------------- global -------------------- #
+
+path_save               : "/cosmos_storage/dlopez/Projects/CL_inference/models/only_inference_models_v1v2_kmax_0.6_box_3000"
+
+# -------------------- dataset -------------------- #
+
+path_load               : "/cosmos_storage/dlopez/Projects/CL_inference/DATASETS/DATASET_kmax_0.6/"
+list_model_names        : ["Model_vary_1", "Model_vary_2"]
+normalize               : True
+
+NN_augs_batch           : 1
+add_noise_Pk            : "cosmic_var_gauss"
+kmax                    : 0.6
+boxsize_cosmic_variance : 3000
+
+# ------------------------- arquitechture ------------------------- #
+
+train_mode               : "train_inference_fully_supervised" # "train_CL", "train_inference_from_latents", "train_inference_fully_supervised", or "train_CL_and_inference"
+inference_loss           : "MultivariateNormal" # this will affect the network arquitechture
+
+load_encoder_model_path : None
+input_encoder           : 100                        # determined by the dataset xx
+hidden_layers_encoder   : [100, 100, 64]               # if load_encoder_model_path!= None --> determined by model to load
+output_encoder          : 32                         # if load_encoder_model_path!= None --> determined by model to load
+
+hidden_layers_projector : []
+output_projector        : 0
+
+hidden_layers_inference : [64, 64, 64]
+NN_params_out           : 5                          # determined by the dataset theta
+
+# -------------------- training -------------------- #
+
+NN_epochs                 : 300
+NN_batches_per_epoch      : 512
+batch_size               : 256
+lr                       : 0.0003
+weight_decay             : 0.
+clip_grad_norm           : 70.
+seed_mode                : "random"
+seed                     : 0
+
+# -------------------- loss -------------------- # 
+
+CL_loss : "None"
+loss_hyperparameters : {
+    'c_inference': 100.,
+}
