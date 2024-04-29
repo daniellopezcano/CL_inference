@@ -263,6 +263,76 @@ def corner_plot(theta, inferred_theta, custom_titles, dict_bounds=None, color_in
     return fig, axs
     
     
+def plot_inference_split_models(
+    list_model_names,
+    len_models,
+    theta_true,
+    theta_pred,
+    Cov,
+    custom_titles,
+    limits_plots,
+    fontsize=26,
+    fontsize1=18,
+    alpha=0.1
+):
+
+    fig, axs = plt.subplots(
+        len(list_model_names), theta_pred.shape[-1], figsize=(5.2*theta_pred.shape[-1], 5.2*len(list_model_names))
+    )
+
+    ii_aug_column0 = 0
+    colors = get_N_colors(len(list_model_names), mpl.colormaps['prism'])
+    for ii_model, model_name in enumerate(list_model_names):    
+        for ii_cosmo_param in range(theta_pred.shape[-1]):
+            if len(list_model_names)==1:
+                ax = axs[ii_cosmo_param]
+            else:
+                ax = axs[ii_model, ii_cosmo_param]
+            if ii_model == 0:
+                ax.set_title(custom_titles[ii_cosmo_param], size=fontsize+8, pad=16)
+            if ii_model == len(list_model_names)-1:
+                ax.set_xlabel(r'True ', size=fontsize)
+            else:
+                ax.axes.get_xaxis().set_visible(False)
+
+            for ii_aug in range(len_models[ii_model]):
+                ii_column_aug = ii_aug_column0 + ii_aug
+
+                ax.scatter(
+                    theta_true[:, ii_cosmo_param], theta_pred[:, ii_column_aug, ii_cosmo_param],
+                   color=colors[ii_model], marker ='o', s=3, alpha=alpha
+                )
+                ax.errorbar(
+                    theta_true[:, ii_cosmo_param], theta_pred[:, ii_column_aug, ii_cosmo_param],
+                    yerr=np.sqrt(Cov[:, ii_column_aug, ii_cosmo_param, ii_cosmo_param]),
+                    c=colors[ii_model], ls='', capsize=2, alpha=alpha, elinewidth=1
+                )
+
+            ymax = limits_plots[ii_cosmo_param][0]
+            ymin = limits_plots[ii_cosmo_param][1]
+    #     ymax = np.nanmax(theta_true[..., ii_cosmo_param])
+    #     ymin = np.nanmin(theta_true[..., ii_cosmo_param])
+            tmp_xx = np.linspace(ymin, ymax, 2)
+            ax.plot(tmp_xx, tmp_xx, c='k', lw=2, ls='-', alpha=1)
+            ax.set_xlim([ymin, ymax])
+            ax.set_ylim([ymin, ymax])
+
+        ii_aug_column0 += len_models[ii_model]
+
+        custom_lines = []
+        custom_labels = []
+        custom_lines.append(mpl.lines.Line2D([0], [0], color=colors[ii_model], ls='-', lw=10, marker=None, markersize=9))
+        custom_labels.append(model_name)
+        if len(list_model_names)==1:
+            ax = axs[0]
+        else:
+            ax = axs[ii_model, 0]
+        legend = ax.legend(custom_lines,custom_labels,loc='upper left',fancybox=True, shadow=True, ncol=1,fontsize=16)
+        ax.set_ylabel(r'Pred ', size=fontsize)
+            
+    return fig, axs
+    
+    
 def theta_distrib_plot(dsets, custom_titles, fontsize=20, fontsize1=13, N_ticks=3, colors=['limegreen', 'royalblue', 'red', 'k']):
 
     min_theta = []

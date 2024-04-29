@@ -2,6 +2,7 @@ import os
 import yaml
 from pathlib import Path
 import wandb
+import torch
 
 from . import train_tools
 from . import data_tools

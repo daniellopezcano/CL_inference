@@ -5,9 +5,10 @@ import torch
 import pickle
 import datetime
 
-def load_stored_data(path_load, list_model_names):
+def load_stored_data(path_load, list_model_names, return_len_models=False):
     
     xx = []
+    len_models = []
     for ii, model_name in enumerate(list_model_names):
         with open(os.path.join(path_load, model_name + '_cosmos.npy'), 'rb') as ff:
             tmp_theta = np.load(ff)
@@ -20,12 +21,17 @@ def load_stored_data(path_load, list_model_names):
         with open(os.path.join(path_load, model_name + '_xx.npy'), 'rb') as ff:
             loaded_xx = np.load(ff)
             
+        len_models.append(loaded_xx.shape[1])
+        
         if ii == 0:
             xx = loaded_xx
         else:
             xx = np.concatenate((xx, loaded_xx), axis=1)
-                        
-    return theta, xx
+    if return_len_models:
+        
+        return theta, xx, np.array(len_models)
+    else:
+        return theta, xx
 
 
 def draw_indexes_augs(NN_augs, batch_size, NN_aug_draws, seed=0):
