@@ -273,7 +273,8 @@ def plot_inference_split_models(
     limits_plots,
     fontsize=26,
     fontsize1=18,
-    alpha=0.1
+    alpha=0.1,
+    colors=None
 ):
 
     fig, axs = plt.subplots(
@@ -281,7 +282,8 @@ def plot_inference_split_models(
     )
 
     ii_aug_column0 = 0
-    colors = get_N_colors(len(list_model_names), mpl.colormaps['prism'])
+    if colors == None:
+        colors = get_N_colors(len(list_model_names), mpl.colormaps['prism'])
     for ii_model, model_name in enumerate(list_model_names):    
         for ii_cosmo_param in range(theta_pred.shape[-1]):
             if len(list_model_names)==1:
@@ -664,3 +666,33 @@ def plot_parameter_regression_vs_truth(theta_true, theta_pred, custom_titles=[r'
         ax.set_ylabel(r'Pred '+ custom_titles[ii_cosmo_param], size=fontsize1)
                 
     return fig, axs
+    
+    
+def compute_bias_hist(true, pred, err, min_x=-6, max_x=6, bins=60):
+    
+    tmp_hist = (pred - true) / err
+    counts, bin_edges = np.histogram(tmp_hist, bins=bins, range=(min_x, max_x))
+    bin_centers = (bin_edges[1:] + bin_edges[:-1])/2
+    counts = np.insert(counts, 0, np.sum(tmp_hist<min_x), axis=0)
+    counts = np.insert(counts, len(counts), np.sum(tmp_hist>max_x), axis=0)
+
+    return bin_edges, bin_centers, counts, true.shape[0]
+
+def compute_bias_hist_augs(true, pred, Cov, min_x=-6, max_x=6, bins=60):
+    
+    NN_params = pred.shape[-1]
+    NN_augs = pred.shape[1]
+    bin_edges = np.zeros((NN_params, NN_augs, bins+1))
+    bin_centers = np.zeros((NN_params, NN_augs, bins))
+    y_hists = np.zeros((NN_params, NN_augs, bins+2))
+    NN_points = np.zeros((NN_params, NN_augs))
+    for ii_cosmo in range(NN_params):
+        for ii_aug in range(NN_augs):
+            tmp_true = true[:, ii_cosmo]
+            tmp_pred = pred[:, ii_aug, ii_cosmo]
+            tmp_err = np.sqrt(Cov[:, ii_aug, ii_cosmo, ii_cosmo])
+            bin_edges[ii_cosmo, ii_aug], bin_centers[ii_cosmo, ii_aug], y_hists[ii_cosmo, ii_aug], NN_points[ii_cosmo, ii_aug] = compute_bias_hist(
+                tmp_true, tmp_pred, tmp_err, min_x=min_x, max_x=max_x, bins=bins
+            )
+
+    return bin_edges, bin_centers, y_hists, NN_points
