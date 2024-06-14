@@ -85,33 +85,47 @@ def reload_models(save_path, main_name, evalute_mode, configs, device):
     return models_encoder, models_inference
     
     
-def compute_dataset_results(config, sweep_name, list_model_names, models_encoder, models_inference, device, dset_key="TEST", indexes_cosmo=None, use_all_dataset_augs_ordered=True):
+def compute_dataset_results(config, sweep_name, list_model_names, models_encoder, models_inference, device, dset_key="TEST", use_all_dataset_augs_ordered=True, indexes_cosmo=None, indexes_augs=None):
     
-    loaded_theta, loaded_xx, len_models = data_tools.load_stored_data(
-        path_load=os.path.join(config['path_load'], dset_key),
-        list_model_names=list_model_names,
-        return_len_models=True
-    )
+    if config['include_baryon_params']:
+        loaded_theta, loaded_xx, loaded_aug_params, len_models = data_tools.load_stored_data(
+            path_load=os.path.join(config['path_load'], dset_key),
+            list_model_names=list_model_names,
+            return_len_models=True,
+            include_baryon_params=config['include_baryon_params']
+        )
+    else:
+        loaded_theta, loaded_xx, len_models = data_tools.load_stored_data(
+            path_load=os.path.join(config['path_load'], dset_key),
+            list_model_names=list_model_names,
+            return_len_models=True,
+            include_baryon_params=config['include_baryon_params']
+        )
+        loaded_aug_params = None
 
     dset = data_tools.data_loader(
         loaded_theta,
         loaded_xx,
+        aug_params=loaded_aug_params,
         normalize=config['normalize'],
         path_load_norm = os.path.join(config['path_save'], sweep_name),
         NN_augs_batch = np.sum(len_models),
         add_noise_Pk=config['add_noise_Pk'],
-        kmax=config['kmax'],
-        boxsize_cosmic_variance=config['boxsize_cosmic_variance'], # Mpc/h
+        kmax=config['kmax']
     )
-    if type(indexes_cosmo) == type(np.array([])):
+    if (type(indexes_cosmo) == type(np.array([]))) and (type(indexes_augs) != type(np.array([]))):
         indexes_augs=np.repeat(np.arange(dset.NN_augs)[np.newaxis], repeats=len(indexes_cosmo), axis=0)
-    else:
-        indexes_augs=None
-    theta_true, xx, indexes_cosmo, indexes_augs = dset(
+    
+    theta_true, xx, aug_params, indexes_cosmo, indexes_augs = dset(
         0, seed=0, to_torch=True, device=device, use_all_dataset_augs_ordered=use_all_dataset_augs_ordered, indexes_cosmo=indexes_cosmo, indexes_augs=indexes_augs, return_indexes_sampled=True
     )
-    theta_true = theta_true.cpu().detach().numpy()
     
+    theta_true = torch.repeat_interleave(theta_true, xx.shape[1], axis=0)
+    if aug_params is not None:
+        aug_params = torch.reshape(aug_params, (aug_params.shape[0]*aug_params.shape[1], aug_params.shape[-1]))
+        theta_true = torch.concatenate((theta_true, aug_params), axis=-1)
+    theta_true = theta_true.cpu().detach().numpy()
+        
     NN_params_out = config["NN_params_out"]
     tmp_xx = torch.reshape(xx, (np.prod(xx.shape[:2]),) + (xx.shape[-1],))
     thetas_pred = np.zeros((len(models_encoder.keys()), tmp_xx.shape[0], NN_params_out))
@@ -119,23 +133,30 @@ def compute_dataset_results(config, sweep_name, list_model_names, models_encoder
     hh = {}
     for ii, sweep_name in enumerate(models_encoder.keys()):
         hh[sweep_name] = models_encoder[sweep_name](tmp_xx.contiguous())
-        yy = models_inference[sweep_name](hh[sweep_name].contiguous())
-
-        theta_pred, cov_pred = yy[:, :theta_true.shape[-1]], yy[:, theta_true.shape[-1]:]
-        Cov = custom_loss_functions.vector_to_Cov(cov_pred).to(device=device)
-
-        thetas_pred[ii] = theta_pred.cpu().detach().numpy()
-        Covs[ii] = Cov.cpu().detach().numpy()
         
+        if models_inference[sweep_name] != None:
+            yy = models_inference[sweep_name](hh[sweep_name].contiguous())
+
+            theta_pred, cov_pred = yy[:, :theta_true.shape[-1]], yy[:, theta_true.shape[-1]:]
+            Cov = custom_loss_functions.vector_to_Cov(cov_pred).to(device=device)
+
+            thetas_pred[ii] = theta_pred.cpu().detach().numpy()
+            Covs[ii] = Cov.cpu().detach().numpy()
+            
         hh[sweep_name] = hh[sweep_name].cpu().detach().numpy()
         hh[sweep_name] = np.reshape(hh[sweep_name], (indexes_augs.shape[0], indexes_augs.shape[1], hh[sweep_name].shape[-1]))
-        
+    
     xx = xx.cpu().detach().numpy()
+    
+    if models_inference[sweep_name] != None:
+        theta_pred = np.mean(thetas_pred, axis=0)
+        Cov = np.mean(Covs, axis=0)
+        theta_pred = np.reshape(theta_pred, (indexes_augs.shape[0], indexes_augs.shape[1], theta_true.shape[-1]))
+        Cov = np.reshape(Cov, (indexes_augs.shape[0], indexes_augs.shape[1], theta_true.shape[-1], theta_true.shape[-1]))
+    else:
+        theta_pred = np.zeros((indexes_augs.shape[0], indexes_augs.shape[1], theta_true.shape[-1]))
+        Cov= np.zeros((indexes_augs.shape[0], indexes_augs.shape[1], theta_true.shape[-1], theta_true.shape[-1]))
         
-    theta_pred = np.mean(thetas_pred, axis=0)
-    Cov = np.mean(Covs, axis=0)
-    
-    theta_pred = np.reshape(theta_pred, (indexes_augs.shape[0], dset.NN_augs_batch, dset.theta.shape[-1]))
-    Cov = np.reshape(Cov, (indexes_augs.shape[0], indexes_augs.shape[1], dset.theta.shape[-1], dset.theta.shape[-1]))
-    
+    theta_true = np.reshape(theta_true, theta_pred.shape)
     return xx, hh, theta_true, theta_pred, Cov, len_models
+    

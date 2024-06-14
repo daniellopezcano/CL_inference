@@ -51,7 +51,7 @@ def wrapper_train_from_config(
     NN_augs_batch,
     add_noise_Pk,
     kmax,
-    boxsize_cosmic_variance,
+    include_baryon_params,
     train_mode,
     inference_loss,
     load_encoder_model_path,
@@ -73,7 +73,9 @@ def wrapper_train_from_config(
     CL_loss,
     loss_hyperparameters,
     run_name,
-    N_threads=1
+    N_threads=1,
+    load_projector_model_path=None,
+    load_inference_model_path=None,
 ):
     
     if run_name != None:
@@ -98,7 +100,7 @@ def wrapper_train_from_config(
         NN_augs_batch           = NN_augs_batch,
         add_noise_Pk            = add_noise_Pk,
         kmax                    = kmax,
-        boxsize_cosmic_variance = boxsize_cosmic_variance # Mpc/h    
+        include_baryon_params   = include_baryon_params
     )
 
     dset_name = "VAL"
@@ -111,7 +113,7 @@ def wrapper_train_from_config(
         NN_augs_batch           = NN_augs_batch,
         add_noise_Pk            = add_noise_Pk,
         kmax                    = kmax,
-        boxsize_cosmic_variance = boxsize_cosmic_variance # Mpc/h    
+        include_baryon_params   = include_baryon_params
     )
 
     # ---------------------------------------------------------------------- #
@@ -140,6 +142,9 @@ def wrapper_train_from_config(
         model_projector = nn_tools.define_MLP_model(
             hidden_layers_projector+[output_projector], output_encoder, bn=True
         ).to(device)
+        if load_projector_model_path != 'None':
+            model_projector.load_state_dict(torch.load(load_projector_model_path))
+            model_projector.eval();
     else:
         model_projector=None
 
@@ -154,7 +159,10 @@ def wrapper_train_from_config(
 
         model_inference = nn_tools.define_MLP_model(
             hidden_layers_inference+[output_dim_inference], output_encoder, bn=True
-        ).to(device)
+        ).to(device)        
+        if load_inference_model_path != 'None':
+            model_inference.load_state_dict(torch.load(load_inference_model_path))
+            model_inference.eval();
     else:
         model_inference = None
 

@@ -301,17 +301,17 @@ def plot_inference_split_models(
                 ii_column_aug = ii_aug_column0 + ii_aug
 
                 ax.scatter(
-                    theta_true[:, ii_cosmo_param], theta_pred[:, ii_column_aug, ii_cosmo_param],
+                    theta_true[:, ii_column_aug, ii_cosmo_param], theta_pred[:, ii_column_aug, ii_cosmo_param],
                    color=colors[ii_model], marker ='o', s=3, alpha=alpha
                 )
                 ax.errorbar(
-                    theta_true[:, ii_cosmo_param], theta_pred[:, ii_column_aug, ii_cosmo_param],
+                    theta_true[:, ii_column_aug, ii_cosmo_param], theta_pred[:, ii_column_aug, ii_cosmo_param],
                     yerr=np.sqrt(Cov[:, ii_column_aug, ii_cosmo_param, ii_cosmo_param]),
                     c=colors[ii_model], ls='', capsize=2, alpha=alpha, elinewidth=1
                 )
 
-            ymax = limits_plots[ii_cosmo_param][0]
-            ymin = limits_plots[ii_cosmo_param][1]
+            ymin = limits_plots[ii_cosmo_param][0]
+            ymax = limits_plots[ii_cosmo_param][1]
     #     ymax = np.nanmax(theta_true[..., ii_cosmo_param])
     #     ymin = np.nanmin(theta_true[..., ii_cosmo_param])
             tmp_xx = np.linspace(ymin, ymax, 2)
@@ -678,6 +678,7 @@ def compute_bias_hist(true, pred, err, min_x=-6, max_x=6, bins=60):
 
     return bin_edges, bin_centers, counts, true.shape[0]
 
+
 def compute_bias_hist_augs(true, pred, Cov, min_x=-6, max_x=6, bins=60):
     
     NN_params = pred.shape[-1]
@@ -688,7 +689,7 @@ def compute_bias_hist_augs(true, pred, Cov, min_x=-6, max_x=6, bins=60):
     NN_points = np.zeros((NN_params, NN_augs))
     for ii_cosmo in range(NN_params):
         for ii_aug in range(NN_augs):
-            tmp_true = true[:, ii_cosmo]
+            tmp_true = true[:, ii_aug, ii_cosmo]
             tmp_pred = pred[:, ii_aug, ii_cosmo]
             tmp_err = np.sqrt(Cov[:, ii_aug, ii_cosmo, ii_cosmo])
             bin_edges[ii_cosmo, ii_aug], bin_centers[ii_cosmo, ii_aug], y_hists[ii_cosmo, ii_aug], NN_points[ii_cosmo, ii_aug] = compute_bias_hist(
@@ -696,3 +697,25 @@ def compute_bias_hist_augs(true, pred, Cov, min_x=-6, max_x=6, bins=60):
             )
 
     return bin_edges, bin_centers, y_hists, NN_points
+
+
+def compute_err_hist_augs(Cov, min_x=[0,0,0,0,0,0,0,0,0,0,0,0], max_x=[0.05, 0.012, 0.12, 0.042, 0.06, 3.2, 1.5, 1.5, 3., .4, 1., 3.], bins=60):
+    
+    NN_params = Cov.shape[-1]
+    NN_augs = Cov.shape[1]
+    bin_edges = np.zeros((NN_params, NN_augs, bins+1))
+    bin_centers = np.zeros((NN_params, NN_augs, bins))
+    y_hists = np.zeros((NN_params, NN_augs, bins+2))
+    median = np.zeros((NN_params, NN_augs))
+    std = np.zeros((NN_params, NN_augs))
+    for ii_cosmo in range(NN_params):
+        for ii_aug in range(NN_augs):            
+            tmp_hist = 2*np.sqrt(Cov[:, ii_aug, ii_cosmo, ii_cosmo])
+            counts, bin_edges[ii_cosmo, ii_aug] = np.histogram(tmp_hist, bins=bins, range=(min_x[ii_cosmo], max_x[ii_cosmo]))
+            bin_centers[ii_cosmo, ii_aug] = (bin_edges[ii_cosmo, ii_aug][1:] + bin_edges[ii_cosmo, ii_aug][:-1])/2
+            counts = np.insert(counts, 0, np.sum(tmp_hist<min_x[ii_cosmo]), axis=0)
+            y_hists[ii_cosmo, ii_aug] = np.insert(counts, len(counts), np.sum(tmp_hist>max_x[ii_cosmo]), axis=0)
+            median[ii_cosmo, ii_aug] = np.median(tmp_hist)
+            std[ii_cosmo, ii_aug] = np.std(tmp_hist)
+            
+    return bin_edges, bin_centers, y_hists, median, std

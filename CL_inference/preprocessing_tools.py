@@ -17,12 +17,13 @@ def sample_latin_hypercube(dict_bounds, N_points=3000, seed=0):
     return theta_latin_hypercube
 
 
-def bacco_emulator(baccoemu_input, kmin=-2.3, kmax=0.6, N_kk=100, mode=None, return_kk=False, constant_density_100points=True): # bacco range: [kmin=-2.3, kmax=0.6]
+def bacco_emulator(baccoemu_input, kmax=0.6, mode=None, return_kk=False, box=2000): # bacco range: [kmin=-2.3, kmax=0.6]
     
     import baccoemu
     
-    if constant_density_100points:
-        N_kk = int(((kmax-kmin)/(0.6+2.3))*100)
+    kf = 2.0 * np.pi / box
+    kmin=np.log10(4*kf)
+    N_kk = int((kmax - kmin) / (8*kf))
         
     if mode == None:
         mode='baryons'
@@ -72,7 +73,8 @@ def generate_baccoemu_dataset(
     path_save = None,
     model_name = "ModelA",
     mode_baccoemu = None,
-    kmax=0.6
+    kmax=0.6,
+    box=2000
 ):
     
     baccoemu_input = {}
@@ -123,10 +125,17 @@ def generate_baccoemu_dataset(
     # ------------------------ generate observations with baccoemu ------------------------ #
     
     xx = bacco_emulator(
-        baccoemu_input, kmin=-2.3, kmax=kmax, return_kk=False, mode=mode_baccoemu, constant_density_100points=True
+        baccoemu_input, kmax=kmax, return_kk=False, mode=mode_baccoemu, box=box
     )
 
     xx = np.reshape(xx, (NN_samples_cosmo, NN_samples_augs, xx.shape[-1]))
+    
+    # ------------------------ reshape baccoemu_input to store all aug baryonic parameters ------------------------ #
+    
+    extended_aug_param_keys = ['M_c', 'eta', 'beta', 'M1_z0_cen', 'theta_out', 'theta_inn', 'M_inn']
+    extended_aug_params = np.zeros((xx.shape[0], xx.shape[1], len(extended_aug_param_keys)))
+    for ii, key in enumerate(extended_aug_param_keys):
+        extended_aug_params[..., ii] = np.reshape(baccoemu_input[key], (xx.shape[0], xx.shape[1]))
     
     # ------------------------ Save data ------------------------ #
     
@@ -135,6 +144,7 @@ def generate_baccoemu_dataset(
             os.makedirs(path_save)
         np.save(os.path.join(path_save, model_name + '_cosmos.npy'), cosmos)
         np.save(os.path.join(path_save, model_name + '_xx.npy'), xx)
-        # np.save(os.path.join(path_save, model_name + '_aug_params.npy'), aug_params)
+        np.save(os.path.join(path_save, model_name + '_aug_params.npy'), aug_params)
+        np.save(os.path.join(path_save, model_name + '_extended_aug_params.npy'), extended_aug_params)
     
-    return cosmos, xx, aug_params
+    return cosmos, xx, aug_params, extended_aug_params

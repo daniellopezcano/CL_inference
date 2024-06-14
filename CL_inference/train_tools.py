@@ -13,6 +13,8 @@ def set_torch_device_(device=None):
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
     print('Device: %s'%(device))
+    if device=="cuda":
+        print("GPU model:", torch.cuda.get_device_name(0))
     
     if device == "cpu":
         torch.manual_seed(seed=0)
@@ -48,7 +50,7 @@ def train_model(
     NN_epochs=300, NN_batches_per_epoch=10, batch_size=16, lr=1e-3, weight_decay=0., clip_grad_norm=None,
     seed_mode="random", # 'random', 'deterministic' or 'overfit'
     seed=0, # only relevant if mode is 'overfit'
-    dset_val=None, batch_size_val=16, path_save=None,
+    dset_val=None, batch_size_val=16, path_save=None, box=2000,
     **kwargs
     ):
     
@@ -90,7 +92,7 @@ def train_model(
             model_encoder=model_encoder, model_projector=model_projector, model_inference=model_inference,
             NN_batches_per_epoch=NN_batches_per_epoch, batch_size=batch_size, clip_grad_norm=clip_grad_norm,
             seed_mode=seed_mode, seed=seed, seed0=seed0,
-            device=device, save_aux_fig_name_epoch=str(tt),
+            device=device, save_aux_fig_name_epoch=str(tt), box=box, 
             **kwargs['train']
         )
         # evaluation of the model after training one epoch
@@ -98,7 +100,7 @@ def train_model(
             dset_train=dset_train, dset_val=dset_val, train_mode=train_mode, scheduler=scheduler,
             model_encoder=model_encoder, model_projector=model_projector, model_inference=model_inference,
             path_save=path_save, min_val_loss=min_val_loss, batch_size=batch_size_val, seed=seed,
-            device=device, save_aux_fig_name=str(tt),
+            device=device, save_aux_fig_name=str(tt), box=box,
             **kwargs['val']
         )
         
@@ -111,7 +113,7 @@ def train_single_epoch(
     model_encoder, model_projector=None, model_inference=None,
     NN_batches_per_epoch=10, batch_size=16, clip_grad_norm=None,
     seed_mode="random", seed=0, seed0=0,
-    device="cpu", NN_print_progress=None, save_aux_fig_name_epoch=None,
+    device="cuda", NN_print_progress=None, save_aux_fig_name_epoch=None, box=2000,
     **kwargs
     ):
     
@@ -127,16 +129,17 @@ def train_single_epoch(
     if train_mode == "train_CL_and_inference":
         model_encoder.train(); model_projector.train(); model_inference.train()
     
+    LOSS = {}
     for ii_batch in range(NN_batches_per_epoch):
         
         # draw batch from dataset
         if seed_mode == "random": seed = datetime.datetime.now().microsecond %13037
         if seed_mode == "deterministic": seed = seed0 + ii_batch
-        theta_true, xx = dset_train(batch_size, seed=seed, to_torch=True, device=device)
+        theta_true, xx, aug_params = dset_train(batch_size, seed=seed, to_torch=True, device=device, box=box)
         
         # compute loss
         LOSS = custom_loss_functions.compute_loss(
-            theta_true, xx,
+            theta_true, xx, aug_params,
             train_mode=train_mode, 
             model_encoder=model_encoder, model_projector=model_projector, model_inference=model_inference,
             CL_loss=kwargs['CL_loss'],
@@ -172,7 +175,7 @@ def eval_single_epoch(
     dset_train, dset_val, train_mode, # "train_CL", "train_inference_from_latents", "train_inference_fully_supervised", or "train_CL_and_inference"
     scheduler, model_encoder, model_projector=None, model_inference=None,
     path_save=None, min_val_loss=None, batch_size=None,
-    device="cpu", seed=0, save_aux_fig_name=None, **kwargs
+    device="cuda", seed=0, save_aux_fig_name=None, box=2000, **kwargs
     ):
     
     if batch_size == None:
@@ -181,14 +184,14 @@ def eval_single_epoch(
     train_loss = eval_dataset(
         dset_train, train_mode, batch_size,
         model_encoder=model_encoder, model_projector=model_projector, model_inference=model_inference,
-        seed=seed, device=device, save_aux_fig_name=None, # <-- replace by save_aux_fig_name if you want to print validation plots
+        seed=seed, device=device, box=box, save_aux_fig_name=None, # <-- replace by save_aux_fig_name if you want to print validation plots
         **kwargs
     )
     
     val_loss = eval_dataset(
         dset_val, train_mode, batch_size,
         model_encoder=model_encoder, model_projector=model_projector, model_inference=model_inference,
-        seed=seed, device=device, save_aux_fig_name=None, # <-- replace by save_aux_fig_name if you want to print validation plots
+        seed=seed, device=device, box=box, save_aux_fig_name=None, # <-- replace by save_aux_fig_name if you want to print validation plots
         **kwargs
     )
     
@@ -249,12 +252,12 @@ def eval_single_epoch(
 def eval_dataset(
         dset, train_mode, batch_size,
         model_encoder, model_projector=None, model_inference=None,
-        seed=0, device="cpu", save_aux_fig_name=None,
+        seed=0, device="cuda", save_aux_fig_name=None, box=2000,
         **kwargs
     ):
     
     # draw batch from dataset
-    theta_true, xx = dset(batch_size, seed=seed, to_torch=True, device=device)
+    theta_true, xx, aug_params = dset(batch_size, seed=seed, to_torch=True, device=device, box=box)
     
     # obtain model predictions & compute loss
     if train_mode == "train_CL":
@@ -265,10 +268,10 @@ def eval_dataset(
         model_encoder.eval(); model_inference.eval()
     if train_mode == "train_CL_and_inference":
         model_encoder.eval(); model_projector.eval(); model_inference.eval()
-    
+
     with torch.no_grad():
         LOSS = custom_loss_functions.compute_loss(
-            theta_true, xx,
+            theta_true, xx, aug_params,
             train_mode=train_mode, 
             model_encoder=model_encoder,
             model_projector=model_projector,
