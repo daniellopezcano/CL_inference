@@ -7,6 +7,43 @@ import numpy as np
 from . import nn_tools
 from . import data_tools
 from . import custom_loss_functions
+from . import train_tools
+
+
+def load_configs_file(models_path, selected_sweeps):
+
+    configs = {}
+    for ii, sweep_name in enumerate(selected_sweeps):
+        if sweep_name == "manual-sweep-0":
+            path_to_config=models_path + "/"+ sweep_name
+            config_file_name = "config.yaml"
+            configs[sweep_name] = train_tools.load_config_file(
+                path_to_config=path_to_config,
+                config_file_name=config_file_name
+            )
+        else:
+            path_to_config=models_path+"/"+sweep_name
+            configs[sweep_name] = load_config_file_wandb_format(
+                path_to_config=path_to_config,
+                config_file_name="config.yaml"
+            )
+            
+    list_assert_compatible_keys = [
+        "normalize","CL_loss","NN_params_out","NN_augs_batch","add_noise_Pk","inference_loss",
+        "input_encoder","kmax","list_model_names","load_encoder_model_path","normalize",
+        "output_encoder","output_projector","path_load","path_save","seed_mode", "train_mode"
+    ]
+
+    for ii, key in enumerate(list_assert_compatible_keys):
+        tmp_list = []
+        for jj, sweep_name in enumerate(selected_sweeps):
+            tmp_list.append(configs[sweep_name][key])
+        assert all(
+            x==tmp_list[0] for x in tmp_list
+        ), "ERROR for " + sweep_name + " - key: " + key + ". Not all config files share the same value: " + str(tmp_list)
+            
+        return configs
+
 
 def load_config_file_wandb_format(path_to_config, config_file_name):
     config_wandb = yaml.safe_load(Path(os.path.join(path_to_config, config_file_name)).read_text())
@@ -15,11 +52,11 @@ def load_config_file_wandb_format(path_to_config, config_file_name):
         try:
             config[key] = config_wandb[key]['value']
         except:
-            print("not value for key", key)
+            print("Warning for " + path_to_config.split('/')[-1] + " - not value for key", key)
     return config
     
     
-def reload_models(save_path, main_name, evalute_mode, configs, device):
+def reload_models(models_path, evalute_mode, configs, device):
 
     models_encoder = {}
     models_inference = {}
@@ -27,14 +64,15 @@ def reload_models(save_path, main_name, evalute_mode, configs, device):
     for ii, sweep_name in enumerate(configs.keys()):
         
         config = configs[sweep_name]
-
+        
+        main_name = models_path.split('/')[-1]
         if ("only_inference" in main_name) and ("CL" in main_name):
             load_encoder_model_path = config["load_encoder_model_path"]
         else:
-            load_encoder_model_path = os.path.join(save_path, main_name, sweep_name, "model_encoder.pt")
+            load_encoder_model_path = os.path.join(models_path, sweep_name, "model_encoder.pt")
 
         if evalute_mode != "eval_CL":
-            load_inference_model_path = os.path.join(save_path, main_name, sweep_name, "model_inference.pt")
+            load_inference_model_path = os.path.join(models_path, sweep_name, "model_inference.pt")
         else:
             load_inference_model_path = None
 
@@ -59,7 +97,7 @@ def reload_models(save_path, main_name, evalute_mode, configs, device):
 
         models_encoder[sweep_name].load_state_dict(torch.load(load_encoder_model_path))
         models_encoder[sweep_name].eval();
-        print("Model encoder loaded: " + load_encoder_model_path)
+        print("Loaded model encoder:", load_encoder_model_path.split('/')[-2])
 
         # ----------------------- define model inference ----------------------- #
         
@@ -80,12 +118,12 @@ def reload_models(save_path, main_name, evalute_mode, configs, device):
             models_inference[sweep_name] = nn_tools.define_MLP_model(hidden_layers_inference+[output_dim_inference], output_encoder, bn=True).to(device)
             models_inference[sweep_name].load_state_dict(torch.load(load_inference_model_path))
             models_inference[sweep_name].eval();
-            print("Model inference loaded: " + load_inference_model_path)
+            print("Loaded model inference:", load_inference_model_path.split('/')[-2])
     
     return models_encoder, models_inference
     
     
-def compute_dataset_results(config, sweep_name, list_model_names, models_encoder, models_inference, device, dset_key="TEST", use_all_dataset_augs_ordered=True, indexes_cosmo=None, indexes_augs=None):
+def compute_dataset_results(config, sweep_name_load_norm_dset, list_model_names, models_encoder, models_inference, device, dset_key="TEST", use_all_dataset_augs_ordered=True, indexes_cosmo=None, indexes_augs=None):
     
     if config['include_baryon_params']:
         loaded_theta, loaded_xx, loaded_aug_params, len_models = data_tools.load_stored_data(
@@ -108,7 +146,7 @@ def compute_dataset_results(config, sweep_name, list_model_names, models_encoder
         loaded_xx,
         aug_params=loaded_aug_params,
         normalize=config['normalize'],
-        path_load_norm = os.path.join(config['path_save'], sweep_name),
+        path_load_norm = os.path.join(config['path_save'], sweep_name_load_norm_dset),
         NN_augs_batch = np.sum(len_models),
         add_noise_Pk=config['add_noise_Pk'],
         kmax=config['kmax']

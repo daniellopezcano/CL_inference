@@ -1,7 +1,9 @@
+import os, sys
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
 import scipy as sp
+from . import evaluation_tools
 
 def matplotlib_default_config():
 
@@ -131,6 +133,247 @@ def simple_plot(x_label='x', y_label='y', custom_labels=None, custom_lines=None)
         ax.add_artist(legend)
 
     return fig, ax
+
+
+def get_config_files(models_path, select_N_best_runs=1):
+    
+    fig, ax, selected_sweeps = plot_sweeps_loss(models_path, select_N_best_runs=select_N_best_runs)
+
+    if "only_inference_also_baryons_models_" in models_path:
+        ax.set_ylim([-12, 0])
+    if "only_inference_" in models_path:
+        ax.set_ylim([-7.5, -3.5])
+    if "only_CL_Wein" in models_path:
+        ax.set_ylim([2., 1000])
+        ax.set_yscale('log')
+    if "only_CL_VICReg" in models_path:
+        ax.set_ylim([0.01, 20])
+        ax.set_yscale('log')
+
+    ax.set_title(models_path.split('/')[-1], fontsize=16)
+    fig.set_tight_layout(True)
+    
+    configs = evaluation_tools.load_configs_file(models_path, selected_sweeps)
+
+    custom_lines = [
+        mpl.lines.Line2D([0], [0], color='k', ls='-', lw=3, marker=None, markersize=9),
+        mpl.lines.Line2D([0], [0], color='k', ls='--', lw=3, marker=None, markersize=9)
+    ]
+
+    fig, ax = simple_plot(
+        custom_labels=[r'Train', r'Val'],
+        custom_lines=custom_lines,
+        x_label='Epoch',
+        y_label='Loss'
+    )
+    
+    custom_lines1 = []
+    custom_labels1 = []
+    colors = get_N_colors(len(selected_sweeps), mpl.colormaps['prism'])
+    for ii, sweep_name in enumerate(selected_sweeps):
+        path_to_register = os.path.join(models_path, sweep_name, "register.txt")
+        losses = np.loadtxt(path_to_register)
+
+        ax.plot(losses[:, 0], c=colors[ii], lw=1, ls='-')
+        ax.plot(losses[:, 1], c=colors[ii], lw=1, ls='--')
+        custom_lines1.append(mpl.lines.Line2D([0], [0], color=colors[ii], ls='-', lw=3, marker=None, markersize=8))
+        custom_labels1.append(sweep_name)
+        
+    legend = ax.legend(custom_lines1, custom_labels1, loc='upper left', fancybox=True, shadow=True, ncol=1,fontsize=12)
+    ax.add_artist(legend)
+    fig.set_tight_layout(True)
+    fig.savefig(models_path + "/losses.png")
+    
+    return configs
+
+
+def plot_sweeps_loss(models_path, select_N_best_runs=1):
+    
+    listdir_names = os.listdir(models_path)
+    sweep_names = []
+    for ii, listdir_name in enumerate(listdir_names):
+        if (os.path.isdir(os.path.join(models_path, listdir_name))) and ("sweep" in listdir_name):
+            sweep_names.append(listdir_name)
+    sweep_names = np.array(sweep_names)
+    
+    custom_lines = [
+        mpl.lines.Line2D([0], [0], color='grey', ls='-', lw=3, marker=None, markersize=9),
+        mpl.lines.Line2D([0], [0], color='grey', ls='--', lw=3, marker=None, markersize=9)
+    ]
+    fig, ax = simple_plot(
+        custom_labels=[r'Train', r'Val'],
+        custom_lines=custom_lines,
+        x_label='Epoch',
+        y_label='Loss'
+    )
+    custom_lines = []
+    colors = get_N_colors(len(sweep_names), mpl.colormaps['prism'])
+    min_loss = []
+    tmp_sweep_names = []
+    tmp_sweep_names_error = []
+    for ii, sweep_name in enumerate(sweep_names):
+        try:
+            path_to_register = os.path.join(models_path, sweep_name, "register.txt")
+            losses = np.loadtxt(path_to_register)
+            
+#             ax.plot(losses[:, 0], c=colors[ii], lw=1, ls='-')
+            ax.plot(losses[:, 1], c=colors[ii], lw=1, ls='--')
+            min_loss.append(np.nanmin(losses[:, 1]))
+            tmp_sweep_names.append(sweep_name)
+
+            custom_lines.append(mpl.lines.Line2D([0], [0], color=colors[ii], ls='-', lw=3, marker=None, markersize=8))
+        except:
+            tmp_sweep_names_error.append(sweep_name)
+
+    sweep_names = np.array(tmp_sweep_names)
+    min_loss = np.array(min_loss)
+    # legend = ax.legend(custom_lines, sweep_names, loc='upper left', fancybox=True, shadow=True, ncol=2,fontsize=7)
+    # ax.add_artist(legend)
+
+    # ------------------------ select_N_best_runs ------------------------ #
+
+    sorted_sweeps_indexes = np.argsort(min_loss)
+    selected_sweeps = sweep_names[sorted_sweeps_indexes][:select_N_best_runs]
+
+    custom_lines = []
+    for ii, sweep_name in enumerate(selected_sweeps):
+        path_to_register = os.path.join(models_path, sweep_name, "register.txt")
+        losses = np.loadtxt(path_to_register)
+
+    #     ax.plot(losses[:, 0], c='k', lw=1, ls='-')
+        ax.plot(losses[:, 1], c='k', lw=1, ls='-')
+
+        custom_lines.append(mpl.lines.Line2D([0], [0], color='k', ls='-', lw=3, marker=None, markersize=8))
+
+    legend = ax.legend(custom_lines, selected_sweeps, loc='upper left', fancybox=True, shadow=True, ncol=1,fontsize=12)
+    ax.add_artist(legend)
+    
+    ax.text(
+        .03, .03, 'Number of ERROR runs - ' + str(len(tmp_sweep_names_error)),
+        ha='left', va='bottom', transform=ax.transAxes
+    ).set_bbox(dict(facecolor='white', alpha=0.9, edgecolor='k'))
+    
+    return fig, ax, selected_sweeps
+
+
+def get_titles_limits_and_priors(include_baryon_params=True):
+
+    custom_titles=[
+        r'$\Omega_\mathrm{c}$',
+        r'$\Omega_\mathrm{b}$',
+        r'$h$',
+        r'$n_\mathrm{s}$',
+        r'$\sigma_{8,\mathrm{c}}$'
+    ]
+    limits_plots_inference = [
+        [0.23, 0.4],
+        [0.038, 0.062],
+        [0.60, 0.80],
+        [0.92, 1.01],
+        [0.73, 0.9]
+    ]
+    list_range_priors = [
+        [0.24, 0.39],
+        [0.041, 0.059],
+        [0.61, 0.79],
+        [0.93, 1.0],
+        [0.74, 0.89]
+    ]
+
+    if include_baryon_params:
+        custom_titles_aug_params =[
+            r'$M_\mathrm{c}$',
+            r'$\eta$',
+            r'$\beta$',
+            r'$M_{1, z_0, \mathrm{cen}}$',
+            r'$\theta_\mathrm{out}$',
+            r'$\theta_\mathrm{in}$',
+            r'$M_\mathrm{inn}$'
+        ]
+        limits_plots_inference_aug_params = [
+            [8.5, 15.5],
+            [-0.75, 0.75],
+            [-1.1, 0.8],
+            [8.9, 13.1],
+            [-0.05, 0.52],
+            [-2.1, -0.423],
+            [8.8, 13.7]
+        ]
+
+        list_range_priors_aug_params = [
+            [9.0, 15.0],
+            [-0.69, 0.69],
+            [-1.00, 0.69],
+            [9.0, 13.0],
+            [0., 0.47],
+            [-2.0, -0.523],
+            [9.0, 13.5]
+        ]
+
+        custom_titles.extend(custom_titles_aug_params)
+        limits_plots_inference.extend(limits_plots_inference_aug_params)
+        list_range_priors.extend(list_range_priors_aug_params)
+    
+    return custom_titles, limits_plots_inference, list_range_priors
+
+
+def colors_dsets(list_model_names):
+
+    colors_fixed = list(get_N_colors(10, mpl.colormaps['cool']))
+    colors_dict = {
+        "Model_vary_all"        : "grey",
+
+        "Model_vary_1"          : "#1F77B4",
+        "Model_vary_2"          : "#FF7F0E",
+        "Model_vary_3"          : "#2CA02C",
+
+        "Model_fixed_0"         : colors_fixed[0],
+        "Model_fixed_1"         : colors_fixed[1],
+        "Model_fixed_2"         : colors_fixed[2],
+        "Model_fixed_3"         : colors_fixed[3],
+        "Model_fixed_4"         : colors_fixed[4],
+        "Model_fixed_5"         : colors_fixed[5],
+        "Model_fixed_6"         : colors_fixed[6],
+        "Model_fixed_7"         : colors_fixed[7],
+        "Model_fixed_8"         : colors_fixed[8],
+        "Model_fixed_9"         : colors_fixed[9],
+
+        "Model_fixed_eagle"     : "#D62728",
+        "Model_fixed_illustris" : "#9467BD",
+        "Model_fixed_bahamas"   : "#8C564B"
+    }
+    
+    selected_colors = []
+    for ii, model_name in enumerate(list_model_names):
+        for jj, key in enumerate(colors_dict.keys()):
+            if model_name == key:
+                selected_colors.append(colors_dict[key])
+                
+    assert len(selected_colors) == len(list_model_names), "ERROR: invalid list_model_names provided"
+    
+    return selected_colors
+    
+def colors_combined_dsets():
+
+    colors_dict = {
+        "all"               : "grey",
+
+        "v1-v2"             : "#8F7B61",
+        "v1-v3"             : "#268C70",
+        "v2-v3"             : "#96901D",
+
+        "f0-f1"             : "#0EF1FF",
+        "f2-f3"             : "#47B9FF",
+        "f4-f5"             : "#8080FF",
+        "f6-f7"             : "#BE59FF",
+        "f8-f9"             : "#F10EFF",
+
+        "illustris-eagle"   : "#B54773",
+        "eagle-bahamas"     : "#B13F3A",
+        "bahamas-illustris" : "#905F84"
+    }
+    
+    return colors_dict
 
 
 def corner_plot(theta, inferred_theta, custom_titles, dict_bounds=None, color_infer='crimson', fontsize=20, fontsize1=13, N_ticks=3, nbins_contour=30):
@@ -333,6 +576,112 @@ def plot_inference_split_models(
         ax.set_ylabel(r'Pred ', size=fontsize)
             
     return fig, axs
+    
+
+def plot_dataset_and_prediction_examples(dsets, dset_name, xx, hh, theta_true, theta_pred, Cov, list_model_names, len_models, colors, kk, custom_titles, limits_plots_inference, plot_as_Pk=True):
+    
+    NN_plot = xx.shape[0]
+    
+    fig, axs = mpl.pyplot.subplots(2,1,figsize=(9,9), gridspec_kw={'height_ratios': [1.5, 1]})
+    axs[0].set_ylabel(r'$P(k) \left[ \left(h^{-1} \mathrm{Mpc}\right)^{3} \right]$')
+    axs[1].set_ylabel(r'$P_{Model}(k) / P_{mean}(k)$')
+    axs[1].set_xlabel(r'$\mathrm{Wavenumber}\, k \left[ h\, \mathrm{Mpc}^{-1} \right]$')
+
+    fig1, ax1 = simple_plot(x_label=r'Latent x [adim]', y_label=r'Latent y [adim]')
+    fig2, axs2 = plt.subplots(1, theta_pred.shape[-1], figsize=(5.2*theta_pred.shape[-1], 5.2))
+
+    if plot_as_Pk:
+        xx_plot = 10**(xx*dsets[dset_name].norm_std + dsets[dset_name].norm_mean)
+        for kmax_plot in np.array([0.6, 0.2, -0.2, -0.6, -1.0, -1.4]):
+            axs[0].axvline(10**kmax_plot, c='k', ls=':', lw=1.)
+            axs[1].axvline(10**kmax_plot, c='k', ls=':', lw=1.)
+    else:
+        xx_plot = xx
+        axs[0].axvline(N_kk, c='k', ls=':', lw=1.)
+        axs[1].axvline(N_kk, c='k', ls=':', lw=1.)
+
+    linestyles = get_N_linestyles(NN_plot)
+    markers = get_N_markers(NN_plot)
+    ii_aug_column = 0
+    custom_lines = []
+    custom_labels = []
+    custom_lines1 = []
+    custom_labels1 = []
+    for ii_model_dataset, len_model in enumerate(len_models):
+        custom_lines.append(mpl.lines.Line2D([0],[0],color=colors[ii_model_dataset],ls='-',lw=10,marker=None,markersize=8))
+        custom_labels.append(list_model_names[ii_model_dataset])
+        for ii_cosmo in range(xx_plot.shape[0]):
+            tmp_slice = slice(ii_aug_column, ii_aug_column+len_model)
+            axs[0].plot(
+                np.array(kk), xx_plot[ii_cosmo, tmp_slice].T,
+                c=colors[ii_model_dataset], linestyle=linestyles[ii_cosmo], lw=1.5, marker=None, ms=2, alpha=0.7
+            )
+            axs[1].plot(
+                np.array(kk), (xx_plot[ii_cosmo, tmp_slice]/np.mean(xx_plot[ii_cosmo], axis=0)).T,
+                c=colors[ii_model_dataset], linestyle=linestyles[ii_cosmo], lw=1.5, marker=None, ms=2
+            )
+            for ii_model_net, sweep_name in enumerate(hh.keys()):
+                ax1.scatter(
+                    hh[sweep_name][ii_cosmo, tmp_slice][...,0], hh[sweep_name][ii_cosmo, tmp_slice][...,1],
+                    c=colors[ii_model_dataset], marker=markers[ii_cosmo], s=40
+                )
+            for ii_cosmo_param in range(theta_true.shape[-1]):
+                tmp_theta_true = theta_true[ii_cosmo, tmp_slice, ii_cosmo_param]
+                tmp_theta_pred = theta_pred[ii_cosmo, tmp_slice, ii_cosmo_param]
+                tmp_Cov = Cov[ii_cosmo, tmp_slice, ii_cosmo_param, ii_cosmo_param]
+                axs2[ii_cosmo_param].scatter(
+                    tmp_theta_true, tmp_theta_pred,
+                   color=colors[ii_model_dataset], marker=markers[ii_cosmo], s=40, alpha=1.
+                )
+                axs2[ii_cosmo_param].errorbar(
+                    tmp_theta_true, tmp_theta_pred,
+                    yerr=np.sqrt(tmp_Cov),
+                    c=colors[ii_model_dataset], ls='', capsize=2, alpha=1., elinewidth=1
+                )            
+            if (ii_model_dataset == 0):
+                custom_lines1.append(
+                    mpl.lines.Line2D([0],[0],color='grey',ls=linestyles[ii_cosmo],lw=3,marker=None,markersize=8)
+                )
+                custom_labels1.append("Cosmo #" + str(ii_cosmo))
+
+                if (ii_cosmo == 0):
+                    for ii_cosmo_param in range(theta_true.shape[-1]):
+                        axs2[ii_cosmo_param].set_title(custom_titles[ii_cosmo_param], size=26, pad=16)
+                        axs2[ii_cosmo_param].set_xlabel(r'True ', size=26)
+
+                        ymin = limits_plots_inference[ii_cosmo_param][0]
+                        ymax = limits_plots_inference[ii_cosmo_param][1]
+                        tmp_xx = np.linspace(ymin, ymax, 2)
+                        axs2[ii_cosmo_param].plot(tmp_xx, tmp_xx, c='k', lw=2, ls='-', alpha=1)
+                        axs2[ii_cosmo_param].set_xlim([ymin, ymax])
+                        axs2[ii_cosmo_param].set_ylim([ymin, ymax])
+
+        ii_aug_column += len_model
+
+    axs2[0].set_ylabel(r'Pred ', size=26)
+
+    legend = axs[0].legend(custom_lines, custom_labels, loc='upper right', fancybox=True, shadow=True, ncol=1,fontsize=14)
+    axs[0].add_artist(legend)
+    legend = axs[0].legend(custom_lines1, custom_labels1, loc='lower left', fancybox=True, shadow=True, ncol=2,fontsize=14)
+    axs[0].add_artist(legend)
+
+    if plot_as_Pk:
+        axs[0].set_xscale('log')
+        axs[0].set_yscale('log')
+        axs[0].set_xlim([0.01, 4.5])
+        axs[0].set_ylim([30., 70000.])
+        axs[1].set_xscale('log')
+        axs[1].set_xlim([0.01, 4.5])
+        axs[1].set_ylim([0.8, 1.2])
+    else:
+        axs[0].set_xlim([0., 100.])
+        axs[0].set_ylim([-2.5, 2.5])
+        axs[1].set_xlim([0., 100.])
+        axs[1].set_ylim([0.8, 1.2])
+
+    axs[0].set_xticklabels([])
+
+    return fig, axs, fig1, ax1, fig2, axs2
     
     
 def theta_distrib_plot(dsets, custom_titles, fontsize=20, fontsize1=13, N_ticks=3, colors=['limegreen', 'royalblue', 'red', 'k']):
