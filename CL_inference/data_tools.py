@@ -35,7 +35,7 @@ def load_stored_data(path_load, list_model_names, return_len_models=False, inclu
             xx = np.concatenate((xx, loaded_xx), axis=1)
             if include_baryon_params:
                 aug_params = np.concatenate((aug_params, loaded_aug_params), axis=1)
-    
+        
     if include_baryon_params:
         if return_len_models:
             return theta, xx, aug_params, np.array(len_models)
@@ -122,7 +122,7 @@ class data_loader():
         if use_all_dataset_augs_ordered:
             indexes_cosmo=np.arange(self.NN_cosmos)
             indexes_augs=np.repeat(np.arange(self.NN_augs)[np.newaxis], repeats=self.NN_cosmos, axis=0)
-            
+        
         batch_size = indexes_cosmo.shape[0]
         NN_augs_batch = indexes_augs.shape[-1]
             

@@ -3,6 +3,7 @@ import torch
 import yaml
 from pathlib import Path
 import datetime
+import ipdb
 
 from . import custom_loss_functions
 
@@ -147,6 +148,9 @@ def train_single_epoch(
             save_aux_fig_name=None, # save_aux_fig_name_epoch+'_'+str(ii_batch) <-- to save figures during training... BE CAREFULL, they are going to be A LOT
             **kwargs['loss_hyperparameters']
         )
+        
+        # ipdb.set_trace()  # Add this line to set an ipdb breakpoint
+        
         # perform backpropagation (update weights of the model)
         optimizer.zero_grad()
         LOSS['loss'].backward()

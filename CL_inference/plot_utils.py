@@ -577,31 +577,33 @@ def plot_inference_split_models(
             
     return fig, axs
     
-
-def plot_dataset_and_prediction_examples(dsets, dset_name, xx, hh, theta_true, theta_pred, Cov, list_model_names, len_models, colors, kk, custom_titles, limits_plots_inference, plot_as_Pk=True):
+    
+def plot_dataset_Pk(dset_norm_mean, dset_norm_std, xx, list_model_names, len_models, colors, kk, plot_as_Pk=True):
     
     NN_plot = xx.shape[0]
     
     fig, axs = mpl.pyplot.subplots(2,1,figsize=(9,9), gridspec_kw={'height_ratios': [1.5, 1]})
-    axs[0].set_ylabel(r'$P(k) \left[ \left(h^{-1} \mathrm{Mpc}\right)^{3} \right]$')
-    axs[1].set_ylabel(r'$P_{Model}(k) / P_{mean}(k)$')
-    axs[1].set_xlabel(r'$\mathrm{Wavenumber}\, k \left[ h\, \mathrm{Mpc}^{-1} \right]$')
-
-    fig1, ax1 = simple_plot(x_label=r'Latent x [adim]', y_label=r'Latent y [adim]')
-    fig2, axs2 = plt.subplots(1, theta_pred.shape[-1], figsize=(5.2*theta_pred.shape[-1], 5.2))
-
+    
     if plot_as_Pk:
-        xx_plot = 10**(xx*dsets[dset_name].norm_std + dsets[dset_name].norm_mean)
+        axs[0].set_ylabel(r'$P(k) \left[ \left(h^{-1} \mathrm{Mpc}\right)^{3} \right]$')
+        axs[1].set_xlabel(r'$\mathrm{Wavenumber}\, k \left[ h\, \mathrm{Mpc}^{-1} \right]$')
+        axs[1].set_ylabel(r'$P_\mathrm{Model}(k) / P_\mathrm{mean\, , train}(k)$')
+        xx_plot = 10**(xx*dset_norm_std + dset_norm_mean)
         for kmax_plot in np.array([0.6, 0.2, -0.2, -0.6, -1.0, -1.4]):
             axs[0].axvline(10**kmax_plot, c='k', ls=':', lw=1.)
             axs[1].axvline(10**kmax_plot, c='k', ls=':', lw=1.)
     else:
+        axs[0].set_ylabel(r'$\mathrm{Norm}\left(P(k) \left[ \left(h^{-1} \mathrm{Mpc}\right)^{3} \right]\right)$')
+        axs[1].set_xlabel('$k - index [adim]$')
+        axs[1].set_ylabel(r'$\frac{\mathrm{Norm}\left(P_\mathrm{Model}(k)\right)}{\mathrm{Norm}\left(P_\mathrm{mean\, , train}(k)\right)}$')
+        N_kk = len(kk)
+        kk = np.arange(N_kk)
         xx_plot = xx
         axs[0].axvline(N_kk, c='k', ls=':', lw=1.)
         axs[1].axvline(N_kk, c='k', ls=':', lw=1.)
+        axs[0].axhline(0., c='k', lw=1, ls=':')
 
     linestyles = get_N_linestyles(NN_plot)
-    markers = get_N_markers(NN_plot)
     ii_aug_column = 0
     custom_lines = []
     custom_labels = []
@@ -610,7 +612,7 @@ def plot_dataset_and_prediction_examples(dsets, dset_name, xx, hh, theta_true, t
     for ii_model_dataset, len_model in enumerate(len_models):
         custom_lines.append(mpl.lines.Line2D([0],[0],color=colors[ii_model_dataset],ls='-',lw=10,marker=None,markersize=8))
         custom_labels.append(list_model_names[ii_model_dataset])
-        for ii_cosmo in range(xx_plot.shape[0]):
+        for ii_cosmo in range(NN_plot):
             tmp_slice = slice(ii_aug_column, ii_aug_column+len_model)
             axs[0].plot(
                 np.array(kk), xx_plot[ii_cosmo, tmp_slice].T,
@@ -619,52 +621,19 @@ def plot_dataset_and_prediction_examples(dsets, dset_name, xx, hh, theta_true, t
             axs[1].plot(
                 np.array(kk), (xx_plot[ii_cosmo, tmp_slice]/np.mean(xx_plot[ii_cosmo], axis=0)).T,
                 c=colors[ii_model_dataset], linestyle=linestyles[ii_cosmo], lw=1.5, marker=None, ms=2
-            )
-            for ii_model_net, sweep_name in enumerate(hh.keys()):
-                ax1.scatter(
-                    hh[sweep_name][ii_cosmo, tmp_slice][...,0], hh[sweep_name][ii_cosmo, tmp_slice][...,1],
-                    c=colors[ii_model_dataset], marker=markers[ii_cosmo], s=40
-                )
-            for ii_cosmo_param in range(theta_true.shape[-1]):
-                tmp_theta_true = theta_true[ii_cosmo, tmp_slice, ii_cosmo_param]
-                tmp_theta_pred = theta_pred[ii_cosmo, tmp_slice, ii_cosmo_param]
-                tmp_Cov = Cov[ii_cosmo, tmp_slice, ii_cosmo_param, ii_cosmo_param]
-                axs2[ii_cosmo_param].scatter(
-                    tmp_theta_true, tmp_theta_pred,
-                   color=colors[ii_model_dataset], marker=markers[ii_cosmo], s=40, alpha=1.
-                )
-                axs2[ii_cosmo_param].errorbar(
-                    tmp_theta_true, tmp_theta_pred,
-                    yerr=np.sqrt(tmp_Cov),
-                    c=colors[ii_model_dataset], ls='', capsize=2, alpha=1., elinewidth=1
-                )            
+            )         
             if (ii_model_dataset == 0):
-                custom_lines1.append(
-                    mpl.lines.Line2D([0],[0],color='grey',ls=linestyles[ii_cosmo],lw=3,marker=None,markersize=8)
-                )
+                custom_lines1.append(mpl.lines.Line2D([0],[0],color='grey',ls=linestyles[ii_cosmo],lw=3,marker=None,markersize=8))
                 custom_labels1.append("Cosmo #" + str(ii_cosmo))
 
-                if (ii_cosmo == 0):
-                    for ii_cosmo_param in range(theta_true.shape[-1]):
-                        axs2[ii_cosmo_param].set_title(custom_titles[ii_cosmo_param], size=26, pad=16)
-                        axs2[ii_cosmo_param].set_xlabel(r'True ', size=26)
-
-                        ymin = limits_plots_inference[ii_cosmo_param][0]
-                        ymax = limits_plots_inference[ii_cosmo_param][1]
-                        tmp_xx = np.linspace(ymin, ymax, 2)
-                        axs2[ii_cosmo_param].plot(tmp_xx, tmp_xx, c='k', lw=2, ls='-', alpha=1)
-                        axs2[ii_cosmo_param].set_xlim([ymin, ymax])
-                        axs2[ii_cosmo_param].set_ylim([ymin, ymax])
-
         ii_aug_column += len_model
-
-    axs2[0].set_ylabel(r'Pred ', size=26)
-
+    
     legend = axs[0].legend(custom_lines, custom_labels, loc='upper right', fancybox=True, shadow=True, ncol=1,fontsize=14)
     axs[0].add_artist(legend)
     legend = axs[0].legend(custom_lines1, custom_labels1, loc='lower left', fancybox=True, shadow=True, ncol=2,fontsize=14)
     axs[0].add_artist(legend)
-
+    
+    axs[1].axhline(1., c='k', lw=1, ls=':')
     if plot_as_Pk:
         axs[0].set_xscale('log')
         axs[0].set_yscale('log')
@@ -677,11 +646,275 @@ def plot_dataset_and_prediction_examples(dsets, dset_name, xx, hh, theta_true, t
         axs[0].set_xlim([0., 100.])
         axs[0].set_ylim([-2.5, 2.5])
         axs[1].set_xlim([0., 100.])
-        axs[1].set_ylim([0.8, 1.2])
-
+        axs[1].set_ylim([-10, 10])
     axs[0].set_xticklabels([])
 
-    return fig, axs, fig1, ax1, fig2, axs2
+    return fig, axs
+    
+    
+def plot_dataset_biased_Pk(dset_norm_mean, dset_norm_std, xx_biased, xx_biased_from_train, kk, plot_as_Pk=True):
+    
+    NN_plot = xx_biased.shape[0]
+
+    fig, axs = mpl.pyplot.subplots(2,1,figsize=(9,9), gridspec_kw={'height_ratios': [1.5, 1]})    
+
+    if plot_as_Pk:
+        axs[0].set_ylabel(r'$P(k) \left[ \left(h^{-1} \mathrm{Mpc}\right)^{3} \right]$')
+        axs[1].set_xlabel(r'$\mathrm{Wavenumber}\, k \left[ h\, \mathrm{Mpc}^{-1} \right]$')
+        axs[1].set_ylabel(r'$P_\mathrm{Model}(k) / P_\mathrm{mean\, , train}(k)$')
+        xx_plot = 10**(xx_biased*dset_norm_std + dset_norm_mean)
+        xx_plot1 = 10**(xx_biased_from_train*dset_norm_std + dset_norm_mean)
+        for kmax_plot in np.array([0.6, 0.2, -0.2, -0.6, -1.0, -1.4]):
+            axs[0].axvline(10**kmax_plot, c='k', ls=':', lw=1.)
+            axs[1].axvline(10**kmax_plot, c='k', ls=':', lw=1.)
+    else:
+        axs[0].set_ylabel(r'$\mathrm{Norm}\left(P(k) \left[ \left(h^{-1} \mathrm{Mpc}\right)^{3} \right]\right)$')
+        axs[1].set_xlabel('$k - index [adim]$')
+        axs[1].set_ylabel(r'$\frac{\mathrm{Norm}\left(P_\mathrm{Model}(k)\right)}{\mathrm{Norm}\left(P_\mathrm{mean\, , train}(k)\right)}$')
+        N_kk = len(kk)
+        kk = np.arange(N_kk)
+        xx_plot = xx_biased
+        xx_plot1 = xx_biased_from_train
+        axs[0].axvline(N_kk, c='k', ls=':', lw=1.)
+        axs[1].axvline(N_kk, c='k', ls=':', lw=1.)
+        axs[0].axhline(0., c='k', lw=1, ls=':')
+
+    linestyles = get_N_linestyles(NN_plot)
+    custom_lines1 = []
+    custom_labels1 = []
+    for ii_cosmo in range(NN_plot):
+        axs[0].plot(
+            np.array(kk), xx_plot[ii_cosmo, 0].T,
+            c="red", linestyle=linestyles[ii_cosmo], lw=1.5, marker=None, ms=2, alpha=0.7
+        )
+        axs[0].plot(
+            np.array(kk), xx_plot1[ii_cosmo, :].T,
+            c="grey", linestyle=linestyles[ii_cosmo], lw=1.5, marker=None, ms=2, alpha=0.7
+        )
+
+        axs[1].plot(
+            np.array(kk), (xx_plot[ii_cosmo, 0]/np.mean(xx_plot1[ii_cosmo], axis=0)).T,
+            c="red", linestyle=linestyles[ii_cosmo], lw=1.5, marker=None, ms=2
+        )
+        axs[1].plot(
+            np.array(kk), (xx_plot1[ii_cosmo, :]/np.mean(xx_plot1[ii_cosmo], axis=0)).T,
+            c="grey", linestyle=linestyles[ii_cosmo], lw=1.5, marker=None, ms=2
+        )
+        custom_lines1.append(mpl.lines.Line2D([0],[0],color='grey',ls=linestyles[ii_cosmo],lw=3,marker=None,markersize=8))
+        custom_labels1.append("Cosmo #" + str(ii_cosmo))
+            
+    legend = axs[0].legend(custom_lines1, custom_labels1, loc='lower left', fancybox=True, shadow=True, ncol=2,fontsize=14)
+    axs[0].add_artist(legend)
+            
+    custom_lines = [
+        mpl.lines.Line2D([0],[0],color='red',ls='-',lw=8,marker=None,markersize=8),
+        mpl.lines.Line2D([0],[0],color='grey',ls='-',lw=8,marker=None,markersize=8)
+    ]
+    custom_labels = [str(NN_plot) + ' most biased test predicitions', 'Corresponding augmentations training-like']
+    legend = axs[0].legend(custom_lines, custom_labels, loc='upper right', fancybox=True, shadow=True, ncol=1,fontsize=14)
+    axs[0].add_artist(legend)
+    
+    axs[1].axhline(1., c='k', lw=1, ls=':')
+    if plot_as_Pk:
+        axs[0].set_xscale('log')
+        axs[0].set_yscale('log')
+        axs[0].set_xlim([0.01, 4.5])
+        axs[0].set_ylim([30., 70000.])
+        axs[1].set_xscale('log')
+        axs[1].set_xlim([0.01, 4.5])
+        axs[1].set_ylim([0.8, 1.2])
+    else:
+        axs[0].set_xlim([0., 100.])
+        axs[0].set_ylim([-2.5, 2.5])
+        axs[1].set_xlim([0., 100.])
+        axs[1].set_ylim([-10, 10])
+    axs[0].set_xticklabels([])
+
+    return fig, axs
+    
+    
+def plot_dataset_latents(hh, list_model_names, len_models, colors):
+    
+    NN_plot = hh[list(hh.keys())[0]].shape[0]
+    
+    fig, ax = simple_plot(x_label=r'Latent x [adim]', y_label=r'Latent y [adim]')
+
+    markers = get_N_markers(NN_plot)
+    ii_aug_column = 0
+    custom_lines = []
+    custom_labels = []
+    custom_lines1 = []
+    custom_labels1 = []
+    for ii_model_dataset, len_model in enumerate(len_models):
+        custom_lines.append(mpl.lines.Line2D([0],[0],color=colors[ii_model_dataset],ls='-',lw=8,marker=None,markersize=8))
+        custom_labels.append(list_model_names[ii_model_dataset])
+        for ii_cosmo in range(NN_plot):
+            tmp_slice = slice(ii_aug_column, ii_aug_column+len_model)
+            for ii_model_net, sweep_name in enumerate(hh.keys()):
+                ax.scatter(
+                    hh[sweep_name][ii_cosmo, tmp_slice][...,0], hh[sweep_name][ii_cosmo, tmp_slice][...,1],
+                    c=colors[ii_model_dataset], marker=markers[ii_cosmo], s=40
+                )   
+            if (ii_model_dataset == 0):
+                custom_lines1.append(mpl.lines.Line2D([0],[0],color='grey',ls='',lw=3,marker=markers[ii_cosmo],markersize=8))
+                custom_labels1.append("Cosmo #" + str(ii_cosmo))
+
+        ii_aug_column += len_model
+
+    legend = ax.legend(custom_lines, custom_labels, loc='upper right', fancybox=True, shadow=True, ncol=1,fontsize=10)
+    ax.add_artist(legend)
+    legend = ax.legend(custom_lines1, custom_labels1, loc='lower left', fancybox=True, shadow=True, ncol=1,fontsize=10)
+    ax.add_artist(legend)
+
+    return fig, ax
+    
+    
+def plot_dataset_biased_latents(hh_biased, hh_biased_from_train):
+    
+    NN_plot = hh_biased[list(hh_biased.keys())[0]].shape[0]
+    
+    fig, ax = simple_plot(x_label=r'Latent x [adim]', y_label=r'Latent y [adim]')
+
+    markers = get_N_markers(NN_plot)
+    custom_lines1 = []
+    custom_labels1 = []
+    for ii_cosmo in range(NN_plot):
+        for ii_model_net, sweep_name in enumerate(hh_biased.keys()):
+            ax.scatter(
+                hh_biased[sweep_name][ii_cosmo, :][...,0], hh_biased[sweep_name][ii_cosmo, :][...,1],
+                c="red", marker=markers[ii_cosmo], s=40
+            )
+            ax.scatter(
+                hh_biased_from_train[sweep_name][ii_cosmo, :][...,0], hh_biased_from_train[sweep_name][ii_cosmo, :][...,1],
+                c="grey", marker=markers[ii_cosmo], s=40
+            )
+        custom_lines1.append(mpl.lines.Line2D([0],[0],color='grey',ls='',lw=3,marker=markers[ii_cosmo],markersize=8))
+        custom_labels1.append("Cosmo #" + str(ii_cosmo))
+            
+    legend = ax.legend(custom_lines1, custom_labels1, loc='lower left', fancybox=True, shadow=True, ncol=1,fontsize=10)
+    ax.add_artist(legend)
+    
+    custom_lines = [
+        mpl.lines.Line2D([0],[0],color='red',ls='-',lw=8,marker=None,markersize=8),
+        mpl.lines.Line2D([0],[0],color='grey',ls='-',lw=8,marker=None,markersize=8)
+    ]
+    custom_labels = [str(NN_plot) + ' most biased test predicitions', 'Corresponding augmentations training-like']
+    legend = ax.legend(custom_lines, custom_labels, loc='upper right', fancybox=True, shadow=True, ncol=1,fontsize=10)
+    ax.add_artist(legend)
+
+    return fig, ax
+
+
+def plot_dataset_predictions(theta_true, theta_pred, Cov, list_model_names, len_models, colors, custom_titles, limits_plots_inference):
+    
+    NN_plot = theta_true.shape[0]
+    
+    fig, axs = plt.subplots(1, theta_pred.shape[-1], figsize=(5.2*theta_pred.shape[-1], 5.2))
+
+    markers = get_N_markers(NN_plot)
+    ii_aug_column = 0
+    custom_lines = []
+    custom_labels = []
+    custom_lines1 = []
+    custom_labels1 = []
+    for ii_model_dataset, len_model in enumerate(len_models):
+        custom_lines.append(mpl.lines.Line2D([0],[0],color=colors[ii_model_dataset],ls='-',lw=10,marker=None,markersize=8))
+        custom_labels.append(list_model_names[ii_model_dataset])
+        for ii_cosmo in range(NN_plot):
+            tmp_slice = slice(ii_aug_column, ii_aug_column+len_model)
+            for ii_cosmo_param in range(theta_true.shape[-1]):
+                tmp_theta_true = theta_true[ii_cosmo, tmp_slice, ii_cosmo_param]
+                tmp_theta_pred = theta_pred[ii_cosmo, tmp_slice, ii_cosmo_param]
+                tmp_Cov = Cov[ii_cosmo, tmp_slice, ii_cosmo_param, ii_cosmo_param]
+                axs[ii_cosmo_param].scatter(
+                    tmp_theta_true, tmp_theta_pred,
+                   color=colors[ii_model_dataset], marker=markers[ii_cosmo], s=40, alpha=1.
+                )
+                axs[ii_cosmo_param].errorbar(
+                    tmp_theta_true, tmp_theta_pred,
+                    yerr=np.sqrt(tmp_Cov),
+                    c=colors[ii_model_dataset], ls='', capsize=2, alpha=1., elinewidth=1
+                )            
+            if (ii_model_dataset == 0):
+                custom_lines1.append(mpl.lines.Line2D([0],[0],color='grey',ls='',lw=3,marker=markers[ii_cosmo],markersize=8))
+                custom_labels1.append("Cosmo #" + str(ii_cosmo))
+
+                if (ii_cosmo == 0):
+                    for ii_cosmo_param in range(theta_true.shape[-1]):
+                        axs[ii_cosmo_param].set_title(custom_titles[ii_cosmo_param], size=26, pad=16)
+                        axs[ii_cosmo_param].set_xlabel(r'True ', size=26)
+
+                        ymin = limits_plots_inference[ii_cosmo_param][0]
+                        ymax = limits_plots_inference[ii_cosmo_param][1]
+                        tmp_xx = np.linspace(ymin, ymax, 2)
+                        axs[ii_cosmo_param].plot(tmp_xx, tmp_xx, c='k', lw=2, ls='-', alpha=1)
+                        axs[ii_cosmo_param].set_xlim([ymin, ymax])
+                        axs[ii_cosmo_param].set_ylim([ymin, ymax])
+
+        ii_aug_column += len_model
+
+    axs[0].set_ylabel(r'Pred ', size=26)
+
+    legend = axs[0].legend(custom_lines, custom_labels, loc='upper left', fancybox=True, shadow=True, ncol=1,fontsize=10)
+    axs[0].add_artist(legend)
+    legend = axs[-1].legend(custom_lines1, custom_labels1, loc='upper left', fancybox=True, shadow=True, ncol=1,fontsize=10)
+    axs[-1].add_artist(legend)
+
+    return fig, axs
+    
+    
+def plot_dataset_biased_predictions(theta_true_biased, theta_pred_biased, Cov_biased, theta_true_biased_from_train, theta_pred_biased_from_train, Cov_biased_from_train, custom_titles, limits_plots_inference):
+        
+    NN_plot = theta_true_biased.shape[0]
+
+    fig, axs = plt.subplots(1, theta_pred_biased.shape[-1], figsize=(5.2*theta_true_biased.shape[-1], 5.2))
+
+    markers = get_N_markers(NN_plot)
+    custom_lines1 = []
+    custom_labels1 = []
+    for ii_cosmo in range(NN_plot):
+        if (ii_cosmo == 0):
+            for ii_cosmo_param in range(theta_true_biased.shape[-1]):
+                axs[ii_cosmo_param].set_title(custom_titles[ii_cosmo_param], size=26, pad=16)
+                axs[ii_cosmo_param].set_xlabel(r'True ', size=26)
+
+                ymin = limits_plots_inference[ii_cosmo_param][0]
+                ymax = limits_plots_inference[ii_cosmo_param][1]
+                tmp_xx = np.linspace(ymin, ymax, 2)
+                axs[ii_cosmo_param].plot(tmp_xx, tmp_xx, c='k', lw=1, ls='-', alpha=1)
+                axs[ii_cosmo_param].set_xlim([ymin, ymax])
+                axs[ii_cosmo_param].set_ylim([ymin, ymax])
+        for ii_cosmo_param in range(theta_true_biased_from_train.shape[-1]):
+            tmp_theta_true = theta_true_biased_from_train[ii_cosmo, :, ii_cosmo_param]
+            tmp_theta_pred = theta_pred_biased_from_train[ii_cosmo, :, ii_cosmo_param]
+            tmp_Cov = Cov_biased_from_train[ii_cosmo, :, ii_cosmo_param, ii_cosmo_param]
+            axs[ii_cosmo_param].scatter(tmp_theta_true, tmp_theta_pred, color="grey", marker=markers[ii_cosmo], s=40, alpha=.7)
+            axs[ii_cosmo_param].errorbar(
+                tmp_theta_true, tmp_theta_pred, yerr=np.sqrt(tmp_Cov), c="grey", ls='', capsize=2, alpha=.7, elinewidth=1
+            )   
+        for ii_cosmo_param in range(theta_true_biased.shape[-1]):
+            tmp_theta_true = theta_true_biased[ii_cosmo, :, ii_cosmo_param]
+            tmp_theta_pred = theta_pred_biased[ii_cosmo, :, ii_cosmo_param]
+            tmp_Cov = Cov_biased[ii_cosmo, :, ii_cosmo_param, ii_cosmo_param]
+            axs[ii_cosmo_param].scatter(tmp_theta_true, tmp_theta_pred, color="red", marker=markers[ii_cosmo], s=40, alpha=1.)
+            axs[ii_cosmo_param].errorbar(
+                tmp_theta_true, tmp_theta_pred, yerr=np.sqrt(tmp_Cov), c="red", ls='', capsize=2, alpha=1., elinewidth=1
+            )
+        custom_lines1.append(mpl.lines.Line2D([0],[0],color='grey',ls='',lw=3,marker=markers[ii_cosmo],markersize=8))
+        custom_labels1.append("Cosmo #" + str(ii_cosmo))
+
+    legend = axs[0].legend(custom_lines1, custom_labels1, loc='upper left', fancybox=True, shadow=True, ncol=1,fontsize=12)
+    axs[0].add_artist(legend)
+
+    custom_lines = [
+        mpl.lines.Line2D([0],[0],color='red',ls='-',lw=8,marker=None,markersize=8),
+        mpl.lines.Line2D([0],[0],color='grey',ls='-',lw=8,marker=None,markersize=8)
+    ]
+    custom_labels = [str(NN_plot) + ' most biased test predicitions', 'Corresponding augmentations training-like']
+    legend = axs[-1].legend(custom_lines, custom_labels, loc='upper left', fancybox=True, shadow=True, ncol=1,fontsize=9)
+    axs[-1].add_artist(legend)
+    
+    return fig, axs
     
     
 def theta_distrib_plot(dsets, custom_titles, fontsize=20, fontsize1=13, N_ticks=3, colors=['limegreen', 'royalblue', 'red', 'k']):
@@ -1015,56 +1248,3 @@ def plot_parameter_regression_vs_truth(theta_true, theta_pred, custom_titles=[r'
         ax.set_ylabel(r'Pred '+ custom_titles[ii_cosmo_param], size=fontsize1)
                 
     return fig, axs
-    
-    
-def compute_bias_hist(true, pred, err, min_x=-6, max_x=6, bins=60):
-    
-    tmp_hist = (pred - true) / err
-    counts, bin_edges = np.histogram(tmp_hist, bins=bins, range=(min_x, max_x))
-    bin_centers = (bin_edges[1:] + bin_edges[:-1])/2
-    counts = np.insert(counts, 0, np.sum(tmp_hist<min_x), axis=0)
-    counts = np.insert(counts, len(counts), np.sum(tmp_hist>max_x), axis=0)
-
-    return bin_edges, bin_centers, counts, true.shape[0]
-
-
-def compute_bias_hist_augs(true, pred, Cov, min_x=-6, max_x=6, bins=60):
-    
-    NN_params = pred.shape[-1]
-    NN_augs = pred.shape[1]
-    bin_edges = np.zeros((NN_params, NN_augs, bins+1))
-    bin_centers = np.zeros((NN_params, NN_augs, bins))
-    y_hists = np.zeros((NN_params, NN_augs, bins+2))
-    NN_points = np.zeros((NN_params, NN_augs))
-    for ii_cosmo in range(NN_params):
-        for ii_aug in range(NN_augs):
-            tmp_true = true[:, ii_aug, ii_cosmo]
-            tmp_pred = pred[:, ii_aug, ii_cosmo]
-            tmp_err = np.sqrt(Cov[:, ii_aug, ii_cosmo, ii_cosmo])
-            bin_edges[ii_cosmo, ii_aug], bin_centers[ii_cosmo, ii_aug], y_hists[ii_cosmo, ii_aug], NN_points[ii_cosmo, ii_aug] = compute_bias_hist(
-                tmp_true, tmp_pred, tmp_err, min_x=min_x, max_x=max_x, bins=bins
-            )
-
-    return bin_edges, bin_centers, y_hists, NN_points
-
-
-def compute_err_hist_augs(Cov, min_x=[0,0,0,0,0,0,0,0,0,0,0,0], max_x=[0.05, 0.012, 0.12, 0.042, 0.06, 3.2, 1.5, 1.5, 3., .4, 1., 3.], bins=60):
-    
-    NN_params = Cov.shape[-1]
-    NN_augs = Cov.shape[1]
-    bin_edges = np.zeros((NN_params, NN_augs, bins+1))
-    bin_centers = np.zeros((NN_params, NN_augs, bins))
-    y_hists = np.zeros((NN_params, NN_augs, bins+2))
-    median = np.zeros((NN_params, NN_augs))
-    std = np.zeros((NN_params, NN_augs))
-    for ii_cosmo in range(NN_params):
-        for ii_aug in range(NN_augs):            
-            tmp_hist = 2*np.sqrt(Cov[:, ii_aug, ii_cosmo, ii_cosmo])
-            counts, bin_edges[ii_cosmo, ii_aug] = np.histogram(tmp_hist, bins=bins, range=(min_x[ii_cosmo], max_x[ii_cosmo]))
-            bin_centers[ii_cosmo, ii_aug] = (bin_edges[ii_cosmo, ii_aug][1:] + bin_edges[ii_cosmo, ii_aug][:-1])/2
-            counts = np.insert(counts, 0, np.sum(tmp_hist<min_x[ii_cosmo]), axis=0)
-            y_hists[ii_cosmo, ii_aug] = np.insert(counts, len(counts), np.sum(tmp_hist>max_x[ii_cosmo]), axis=0)
-            median[ii_cosmo, ii_aug] = np.median(tmp_hist)
-            std[ii_cosmo, ii_aug] = np.std(tmp_hist)
-            
-    return bin_edges, bin_centers, y_hists, median, std
