@@ -135,7 +135,7 @@ def simple_plot(x_label='x', y_label='y', custom_labels=None, custom_lines=None)
     return fig, ax
 
 
-def get_config_files(models_path, select_N_best_runs=1):
+def get_config_files(models_path, select_N_best_runs=1, handpicked_sweeps=None):
     
     fig, ax, selected_sweeps = plot_sweeps_loss(models_path, select_N_best_runs=select_N_best_runs)
 
@@ -144,7 +144,7 @@ def get_config_files(models_path, select_N_best_runs=1):
     if "only_inference_" in models_path:
         ax.set_ylim([-7.5, -3.5])
     if "only_CL_Wein" in models_path:
-        ax.set_ylim([2., 1000])
+        ax.set_ylim([0.5, 1000])
         ax.set_yscale('log')
     if "only_CL_VICReg" in models_path:
         ax.set_ylim([0.01, 20])
@@ -152,6 +152,9 @@ def get_config_files(models_path, select_N_best_runs=1):
 
     ax.set_title(models_path.split('/')[-1], fontsize=16)
     fig.set_tight_layout(True)
+    
+    if handpicked_sweeps is not None:
+        selected_sweeps = handpicked_sweeps
     
     configs = evaluation_tools.load_configs_file(models_path, selected_sweeps)
 

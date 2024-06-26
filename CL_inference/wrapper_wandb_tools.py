@@ -1,8 +1,18 @@
+"""
+Perform a hyperparameter sweep using Weights & Biases (wandb) https://wandb.ai/site.
+
+Functions:
+- wandb_train               : Train a model using wandb for logging and configuration.
+- wandb_sweep               : Perform a hyperparameter sweep using wandb.
+- wrapper_train_from_config : Wrapper function to train a model based on provided configuration.
+"""
+
 import os
 import yaml
 from pathlib import Path
 import wandb
 import torch
+import logging
 
 from . import train_tools
 from . import data_tools
@@ -10,6 +20,15 @@ from . import nn_tools
 
 
 def wandb_train(config=None):
+    """
+    Train a model using wandb for logging and configuration.
+    
+    Parameters
+    ----------
+    config : dict, optional
+        Configuration dictionary for wandb, by default None.
+    """
+    logging.info('Starting wandb training...')
     
     with wandb.init(config=config) as run:
         
@@ -25,6 +44,21 @@ def wandb_train(config=None):
         
         
 def wandb_sweep(wandb_config_name, wandb_project_name, N_samples_hyperparmeters=5, path_to_config="../config_files/"):
+    """
+    Perform a hyperparameter sweep using wandb.
+    
+    Parameters
+    ----------
+    wandb_config_name : str
+        Name of the wandb configuration file.
+    wandb_project_name : str
+        Name of the wandb project.
+    N_samples_hyperparmeters : int, optional
+        Number of hyperparameter samples, by default 5.
+    path_to_config : str, optional
+        Path to the configuration files, by default "../config_files/".
+    """
+    logging.info('Starting wandb sweep...')
     
     sweep_config = train_tools.load_config_file(
         path_to_config=path_to_config,
@@ -50,6 +84,8 @@ def wrapper_train_from_config(
     normalize,
     NN_augs_batch,
     add_noise_Pk,
+    box,
+    factor_kmin_cut,
     kmax,
     include_baryon_params,
     train_mode,
@@ -77,10 +113,24 @@ def wrapper_train_from_config(
     load_projector_model_path=None,
     load_inference_model_path=None,
 ):
+    """
+    Wrapper function to train a model based on provided configuration.
     
-    if run_name != None:
+    Parameters
+    ----------
+    (numerous parameters related to model configuration and training, see original function definition)
+    
+    Returns
+    -------
+    float
+        Minimum validation loss.
+    """
+    logging.info('Starting training with configuration...')
+    
+    if run_name:
         path_save = os.path.join(path_save, run_name)
-    print("path_save:", path_save)
+    logging.info('path_save: %s', path_save)
+    
     train_tools.set_N_threads_(N_threads=N_threads)
     device = train_tools.set_torch_device_()
     
@@ -183,6 +233,8 @@ def wrapper_train_from_config(
         seed_mode=seed_mode, # 'random', 'deterministic' or 'overfit'
         seed=seed, # only relevant if mode is 'overfit'
         path_save=path_save,
+        box=box,
+        factor_kmin_cut=factor_kmin_cut,
         **kwargs
     )
     

@@ -1,130 +1,60 @@
+"""
+This module contains functions for computing different custom loss functions
+
+Functions:
+- compute_loss
+- weinberger_loss
+- vicreg_loss
+- off_diagonal
+- vector_to_Cov
+"""
+
 import torch
 import math
 import ipdb
+import logging
 
-def weinberger_loss(yy, delta_pull=0.5, delta_push=1.5, c_pull=1., c_push=1., c_reg=0.001, _epsilon=1e-8):
-        
-    # ----------------------- Compute positions cluster centers ----------------------- #
-
-    cluster_centers = torch.sum(yy, axis=1)[:,None] / yy.shape[1]
-
-    # ----------------------- Compute L_reg ----------------------- #
-
-    cluster_centers_distance_origin = torch.sqrt(torch.sum(cluster_centers**2, axis=-1)+_epsilon)
-    L_reg = torch.sum(cluster_centers_distance_origin) / yy.shape[0]
-
-    # ----------------------- Compute L_pull ----------------------- #
-
-    distances_to_cluster_centers = torch.sqrt(torch.sum((yy - cluster_centers.repeat(1, yy.shape[1], 1))**2, axis=-1)+_epsilon)
-    hinged_distances_to_cluster_centers = distances_to_cluster_centers - delta_pull
-    ind_L_pull_terms = torch.clip(
-        hinged_distances_to_cluster_centers,
-        0., torch.max(torch.FloatTensor([0., torch.max(hinged_distances_to_cluster_centers)]))
-    )**2
-    L_pull = torch.sum(ind_L_pull_terms)
-
-    # ----------------------- Compute L_push ----------------------- #
-
-    casted_cluster_centers = cluster_centers.repeat(1, yy.shape[0], 1)
-    relative_posistions_cluster_centers = casted_cluster_centers - torch.transpose(casted_cluster_centers, 0, 1)
-    distances_between_cluster_centers = torch.sqrt(torch.sum(relative_posistions_cluster_centers**2, axis=-1)+_epsilon)
-    hinged_distances_between_cluster_centers = 2*delta_push - distances_between_cluster_centers
-    ind_L_push_terms = torch.triu(torch.clip(
-        hinged_distances_between_cluster_centers,
-        0., 2.*delta_push
-    )**2, diagonal=1)
-    L_push = torch.sum(ind_L_push_terms)
-
-    # ----------------------- total loss ----------------------- #
-    
-    loss = c_pull*L_pull + c_push*L_push + c_reg*L_reg
-    
-    return loss, L_pull, L_push, L_reg, cluster_centers
-    
-# the loss is taken from
-# https://uvadlc-notebooks.readthedocs.io/en/latest/tutorial_notebooks/tutorial17/SimCLR.html
-# def nce_loss(z_a, z_b, temperature=0.1):
-    # print('z_a', z_a.shape)
-    # print('z_b', z_b.shape)
-    # # Calculate cosine similarity
-    # cos_sim = torch.functional.F.cosine_similarity(z_a, z_b, dim=-1)
-    # print('cos_sim', cos_sim.shape)
-    # # Mask out cosine similarity to itself
-    # print('cos_sim.shape[0]', cos_sim.shape[0])
-    # self_mask = torch.eye(cos_sim.shape[0], dtype=torch.bool, device=cos_sim.device)
-    # print('self_mask', self_mask.shape)
-    # cos_sim.masked_fill_(self_mask, -9e15)
-    # # Find positive example -> batch_size//2 away from the original example
-    # pos_mask = self_mask.roll(shifts=cos_sim.shape[0]//2, dims=0)
-    # # InfoNCE loss
-    # cos_sim = cos_sim / temperature
-    # nll = -cos_sim[pos_mask] + torch.logsumexp(cos_sim, dim=-1)
-    # nll = nll.mean()
-    # return nll
-# def nce_loss(features, temperature=0.1):
-    # # Calculate cosine similarity
-    # cos_sim = torch.functional.F.cosine_similarity(features[:,None,:], features[None,:,:], dim=-1)
-    # # Mask out cosine similarity to itself
-    # self_mask = torch.eye(cos_sim.shape[0], dtype=torch.bool, device=cos_sim.device)
-    # cos_sim.masked_fill_(self_mask[..., None], -9e15)
-    # # Find positive example -> batch_size//2 away from the original example
-    # pos_mask = self_mask.roll(shifts=cos_sim.shape[0]//2, dims=0)
-    # # InfoNCE loss
-    # cos_sim = cos_sim / temperature
-    # nll = -cos_sim[pos_mask] + torch.logsumexp(cos_sim, dim=-1)
-    # nll = nll.mean()
-    # return nll
-    
-    
-## adapted from "generally intellient" team's code 
-## https://generallyintelligent.com/open-source/2022-04-21-vicreg/
-def off_diagonal(x):
-    n, m = x.shape
-    assert n == m
-    return x.flatten()[:-1].view(n - 1, n + 1)[:, 1:].flatten()
-
-def vicreg_loss(z_a, z_b, inv_weight=25, var_weight=25, cov_weight=1):
-    
-    assert z_a.shape == z_b.shape and len(z_a.shape) == 2
-    # invariance loss
-    loss_inv = torch.functional.F.mse_loss(z_a, z_b)
-    
-    # variance loss
-    std_z_a = torch.sqrt(z_a.var(dim=0) + 0.0001) 
-    std_z_b = torch.sqrt(z_b.var(dim=0) + 0.0001) 
-    loss_v_a = torch.mean(torch.functional.F.relu(1 - std_z_a))
-    loss_v_b = torch.mean(torch.functional.F.relu(1 - std_z_b)) 
-    loss_var = (loss_v_a + loss_v_b) 
-    
-    z_a = z_a - z_a.mean(dim=0)
-    z_b = z_b - z_b.mean(dim=0)
-
-    # covariance loss
-    N, D = z_a.shape
-    cov_z_a = ((z_a.T @ z_a) / (N - 1)) # DxD
-    cov_z_b = ((z_b.T @ z_b) / (N - 1)) # DxD
-    loss_cov = off_diagonal(cov_z_a).pow_(2).sum().div(D) 
-    loss_cov += off_diagonal(cov_z_b).pow_(2).sum().div(D)
-    
-    weighted_inv = loss_inv * inv_weight
-    weighted_var = loss_var * var_weight
-    weighted_cov = loss_cov * cov_weight
-
-    loss = weighted_inv + weighted_var + weighted_cov   
-    return loss, weighted_inv, weighted_var, weighted_cov
-    
-    
 def compute_loss(
-    theta_true,
-    xx,
-    aug_params,
+    theta_true, xx, aug_params,
     train_mode, # "train_CL", "train_inference_from_latents", "train_inference_fully_supervised", or "train_CL_and_inference"
     model_encoder, model_projector=None, model_inference=None,
-    CL_loss="VicReg",
-    inference_loss="MSE",
-    save_aux_fig_name=None,
+    CL_loss="VicReg", inference_loss="MSE", save_aux_fig_name=None,
     **kwargs
     ):
+    """
+    Compute the loss.
+
+    Parameters
+    ----------
+    theta_true : torch.Tensor
+        True parameters.
+    xx : torch.Tensor
+        Input data.
+    aug_params : torch.Tensor
+        Augmentation parameters.
+    train_mode : str
+        Training mode.
+    model_encoder : torch.nn.Module
+        Encoder model.
+    model_projector : torch.nn.Module, optional
+        Projector model, by default None.
+    model_inference : torch.nn.Module, optional
+        Inference model, by default None.
+    CL_loss : str, optional
+        Contrastive learning loss type, by default "VicReg".
+    inference_loss : str, optional
+        Inference loss type, by default "MSE".
+    save_aux_fig_name : str, optional
+        Path to save auxiliary figures, by default None.
+    **kwargs
+        Additional arguments.
+
+    Returns
+    -------
+    dict
+        Dictionary containing the loss components.
+    """
+    logging.debug('Computing loss...')
     
     if next(model_encoder.parameters()).is_cuda: device = "cuda"
     else: device = "cpu"
@@ -157,38 +87,46 @@ def compute_loss(
         zz = {}
         zz = model_projector(hh.contiguous())
         zz = torch.reshape(zz, tuple([len_batch, len_augs,] + list(zz.shape[1:])))
-
-        if CL_loss == "VicReg":
-            loss_CL, inv, var, cov = vicreg_loss(zz[:,0], zz[:,1], **kwargs)
-        if CL_loss == "Weinberger":
-            loss_CL, L_pull, L_push, L_reg, cluster_centers = weinberger_loss(zz, **kwargs)
-        if CL_loss == "SimCLR":
-            loss_CL = nce_loss(zz, **kwargs)
-
-    if (train_mode == "train_inference_fully_supervised") or (train_mode == "train_inference_from_latents") or (train_mode == "train_CL_and_inference"):
+        logging.debug('zz.shape: %s', zz.shape)
         
+        if CL_loss == "VicReg":
+            loss_CL, inv, var, cov = vicreg_loss(zz[:, 0], zz[:, 1], **kwargs)
+        elif CL_loss == "Weinberger":
+            loss_CL, L_pull, L_push, L_reg, cluster_centers = weinberger_loss(zz, **kwargs)
+        elif CL_loss == "SimCLR":
+            loss_CL = SimCLR_loss(zz, **kwargs)
+        else:
+            logging.error('Unknown CL_loss: %s', CL_loss)
+            raise ValueError(f"Unknown CL_loss: {CL_loss}")
+            
+    if train_mode in ("train_inference_fully_supervised", "train_inference_from_latents", "train_CL_and_inference"):
         if inference_loss == "MSE":
             theta_pred = model_inference(hh.contiguous())
-            loss_inference = torch.nn.MSELoss()(theta_pred, theta_true)        
-
-        if inference_loss == "MultivariateNormal":
+            loss_inference = torch.nn.MSELoss()(theta_pred, theta_true)
+        elif inference_loss == "MultivariateNormal":
             yy = model_inference(hh.contiguous())
             theta_pred = yy[:, :theta_true.shape[-1]]
             Cov = vector_to_Cov(yy[:, theta_true.shape[-1]:]).to(device=device)
-            # ipdb.set_trace()  # Add this line to set an ipdb breakpoint
             loss_inference = -torch.distributions.MultivariateNormal(loc=theta_pred, covariance_matrix=Cov).log_prob(theta_true).mean()
+        else:
+            logging.error('Unknown inference_loss: %s', inference_loss)
+            raise ValueError(f"Unknown inference_loss: {inference_loss}")
+    
     
     LOSS = {}
     if train_mode == "train_CL":
         LOSS['loss'] = c_CL*loss_CL
         LOSS['loss'] = LOSS['loss'] / len_batch_times_aug
-    if (train_mode == "train_inference_fully_supervised") or (train_mode == "train_inference_from_latents"):
+    elif train_mode in ("train_inference_fully_supervised", "train_inference_from_latents"):
         LOSS['loss'] = c_inference*loss_inference
         LOSS['loss'] = LOSS['loss'] / len_batch_times_aug
-    if train_mode == "train_CL_and_inference":
+    elif train_mode == "train_CL_and_inference":
         LOSS['loss'] = c_CL*loss_CL + c_inference*loss_inference
         LOSS['loss'] = LOSS['loss'] / len_batch_times_aug
-
+    else:
+        logging.error('Unknown train_mode: %s', train_mode)
+        raise ValueError(f"Unknown train_mode: {train_mode}")
+            
     if save_aux_fig_name != None:
         
         path_save_figs = "/cosmos_storage/home/dlopez/Projects/CL_inference/models/aux/"
@@ -392,6 +330,177 @@ def compute_loss(
                 
     return LOSS
     
+
+def SimCLR_loss(zz, TT=1.):
+    """
+    Compute the SimCLR loss described in https://arxiv.org/pdf/2002.05709 / https://uvadlc-notebooks.readthedocs.io/en/latest/tutorial_notebooks/tutorial17/SimCLR.html
+
+    Parameters
+    ----------
+    zz : torch.Tensor
+        Input tensor.
+    TT : float, optional
+        temperature loss parameter
+
+    Returns
+    -------
+    tuple
+        Total loss, L_pull, L_push, L_reg, and cluster centers.
+    """
+    
+    device = zz.device
+    NN = zz.shape[0]
+    NN_augs = zz.shape[1]
+    NN_latent = zz.shape[-1]
+    
+    tmp_zz = torch.Tensor.reshape(zz, (NN*NN_augs, NN_latent))
+    tmp_zz = torch.Tensor.repeat_interleave(tmp_zz[np.newaxis], NN*NN_augs, dim=0)
+    tmp_zzT = torch.transpose(tmp_zz, 0, 1)
+    cos_sim = torch.exp(torch.functional.F.cosine_similarity(tmp_zz, tmp_zzT, dim=-1) / TT)
+    
+    tmp_norm = torch.sum(cos_sim) - cos_sim
+    
+    loss_ij = -torch.log(cos_sim / tmp_norm)
+
+    tmp_mask = torch.ones((NN_augs,NN_augs), device=device) - torch.eye(NN_augs, device=device)
+    tmp_mask_list = [tmp_mask for _ in range(NN)]
+    block_diag_matrix = torch.block_diag(*tmp_mask_list)
+
+    loss = torch.sum(loss_ij * block_diag_matrix)
+    
+    return loss
+
+
+def weinberger_loss(yy, delta_pull=0.5, delta_push=1.5, c_pull=1., c_push=1., c_reg=0.001, _epsilon=1e-8):
+    """
+    Compute the Weinberger loss described in https://arxiv.org/pdf/1708.02551
+
+    Parameters
+    ----------
+    yy : torch.Tensor
+        Input tensor.
+    delta_pull : float, optional
+        Pull margin, by default 0.5.
+    delta_push : float, optional
+        Push margin, by default 1.5.
+    c_pull : float, optional
+        Pull coefficient, by default 1..
+    c_push : float, optional
+        Push coefficient, by default 1..
+    c_reg : float, optional
+        Regularization coefficient, by default 0.001.
+    _epsilon : float, optional
+        Small constant to avoid division by zero, by default 1e-8.
+
+    Returns
+    -------
+    tuple
+        Total loss, L_pull, L_push, L_reg, and cluster centers.
+    """
+    
+    # Compute positions cluster centers
+    cluster_centers = torch.sum(yy, axis=1)[:,None] / yy.shape[1]
+    logging.debug('Cluster centers: %s', cluster_centers)
+
+    # Compute L_reg 
+    cluster_centers_distance_origin = torch.sqrt(torch.sum(cluster_centers**2, axis=-1)+_epsilon)
+    L_reg = torch.sum(cluster_centers_distance_origin) / yy.shape[0]
+    logging.debug('Cluster centers: %s', cluster_centers)
+    
+    # Compute L_pull
+    distances_to_cluster_centers = torch.sqrt(torch.sum((yy - cluster_centers.repeat(1, yy.shape[1], 1))**2, axis=-1)+_epsilon)
+    hinged_distances_to_cluster_centers = distances_to_cluster_centers - delta_pull
+    ind_L_pull_terms = torch.clip(
+        hinged_distances_to_cluster_centers,
+        0., torch.max(torch.FloatTensor([0., torch.max(hinged_distances_to_cluster_centers)]))
+    )**2
+    L_pull = torch.sum(ind_L_pull_terms)
+    logging.debug('L_pull: %s', L_pull)
+    
+    # Compute L_push
+    casted_cluster_centers = cluster_centers.repeat(1, yy.shape[0], 1)
+    relative_posistions_cluster_centers = casted_cluster_centers - torch.transpose(casted_cluster_centers, 0, 1)
+    distances_between_cluster_centers = torch.sqrt(torch.sum(relative_posistions_cluster_centers**2, axis=-1)+_epsilon)
+    hinged_distances_between_cluster_centers = 2*delta_push - distances_between_cluster_centers
+    ind_L_push_terms = torch.triu(torch.clip(
+        hinged_distances_between_cluster_centers,
+        0., 2.*delta_push
+    )**2, diagonal=1)
+    L_push = torch.sum(ind_L_push_terms)
+    logging.debug('L_push: %s', L_push)
+    
+    # total loss
+    loss = c_pull*L_pull + c_push*L_push + c_reg*L_reg
+    logging.debug('Total Weinberger loss: %s', loss)
+    
+    return loss, L_pull, L_push, L_reg, cluster_centers
+    
+
+def vicreg_loss(z_a, z_b, inv_weight=25., var_weight=25., cov_weight=1.):
+    """
+    Compute the VICReg loss.
+    Adapted from "generally intellient" team's code https://generallyintelligent.com/open-source/2022-04-21-vicreg/.
+    Implementation from in https://arxiv.org/pdf/2308.09751 --> https://github.com/AizhanaAkhmet/data-compression-inference-in-cosmology-with-SSL
+
+    Parameters
+    ----------
+    z_a : torch.Tensor
+        Embedding a.
+    z_b : torch.Tensor
+        Embedding b.
+    inv_weight : float, optional
+        Invariance weight, by default 25.
+    var_weight : float, optional
+        Variance weight, by default 25.
+    cov_weight : float, optional
+        Covariance weight, by default 1.
+
+    Returns
+    -------
+    tuple
+        Total loss, weighted_inv, weighted_var, weighted_cov.
+    """
+    logging.debug('Computing VICReg loss...')
+    
+    assert z_a.shape == z_b.shape and len(z_a.shape) == 2
+    # invariance loss
+    loss_inv = torch.functional.F.mse_loss(z_a, z_b)
+    logging.debug('Invariance loss: %s', loss_inv)
+    
+    # variance loss
+    std_z_a = torch.sqrt(z_a.var(dim=0) + 0.0001) 
+    std_z_b = torch.sqrt(z_b.var(dim=0) + 0.0001) 
+    loss_v_a = torch.mean(torch.functional.F.relu(1 - std_z_a))
+    loss_v_b = torch.mean(torch.functional.F.relu(1 - std_z_b)) 
+    loss_var = (loss_v_a + loss_v_b) 
+    logging.debug('Variance loss: %s', loss_var)
+    
+    z_a = z_a - z_a.mean(dim=0)
+    z_b = z_b - z_b.mean(dim=0)
+
+    # covariance loss
+    N, D = z_a.shape
+    cov_z_a = ((z_a.T @ z_a) / (N - 1)) # DxD
+    cov_z_b = ((z_b.T @ z_b) / (N - 1)) # DxD
+    loss_cov = off_diagonal(cov_z_a).pow_(2).sum().div(D) 
+    loss_cov += off_diagonal(cov_z_b).pow_(2).sum().div(D)
+    logging.debug('Covariance loss: %s', loss_cov)
+    
+    weighted_inv = loss_inv * inv_weight
+    weighted_var = loss_var * var_weight
+    weighted_cov = loss_cov * cov_weight
+
+    loss = weighted_inv + weighted_var + weighted_cov   
+    
+    logging.debug('Total VICReg loss: %s', loss)
+    return loss, weighted_inv, weighted_var, weighted_cov
+
+
+def off_diagonal(x):
+    n, m = x.shape
+    assert n == m
+    return x.flatten()[:-1].view(n - 1, n + 1)[:, 1:].flatten()
+
 
 def vector_to_Cov(vec, device="cuda"):
     """ Convert unconstrained vector into a positive-diagonal, symmetric covariance matrix
