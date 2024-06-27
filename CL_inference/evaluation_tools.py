@@ -15,7 +15,7 @@ from . import train_tools
 from . import plot_utils
 
 
-def load_configs_file(models_path, selected_sweeps):
+def load_configs_files(models_path, selected_sweeps, wandb_entity):
     """
     Load configuration files for selected sweeps.
 
@@ -38,7 +38,8 @@ def load_configs_file(models_path, selected_sweeps):
             path_to_config=models_path+"/"+sweep_name
             configs[sweep_name] = load_config_file_wandb_format(
                 path_to_config=path_to_config,
-                config_file_name=CONFIG_FILE_NAME
+                config_file_name=CONFIG_FILE_NAME,
+                wandb_entity=wandb_entity
             )
             
     list_assert_compatible_keys = [
@@ -58,7 +59,7 @@ def load_configs_file(models_path, selected_sweeps):
         return configs
 
 
-def load_config_file_wandb_format(path_to_config, config_file_name):
+def load_config_file_wandb_format(path_to_config, config_file_name, wandb_entity):
     """
     Load configuration .yaml file (from wandb sweep) for a selected sweep.
 
@@ -69,7 +70,15 @@ def load_config_file_wandb_format(path_to_config, config_file_name):
     Returns:
     dict: config file.
     """
-    config_wandb = yaml.safe_load(Path(os.path.join(path_to_config, config_file_name)).read_text())
+    try:
+        config_wandb = yaml.safe_load(Path(os.path.join(path_to_config, config_file_name)).read_text())
+    except:
+        logging.info("config file '" + config_file_name + "' not stored at " + path_to_config + ". Trying to load using wandb api...")
+        download_path = path_to_config
+        wandb_project = path_to_config.split("/")[-2].split(".")[0]
+        sweep_name = path_to_config.split("/")[-1]
+        config_wandb = download_config_file_from_api_wandb(wandb_entity, download_path, wandb_project, sweep_name)
+        
     config = {}
     for ii, key in enumerate(config_wandb.keys()):
         try:
@@ -78,6 +87,51 @@ def load_config_file_wandb_format(path_to_config, config_file_name):
             logging.warning(f"Not value for key" + key + " in " + path_to_config.split('/')[-1])
     
     return config
+    
+    
+def download_config_file_from_api_wandb(wandb_entity, download_path, wandb_project, sweep_name):
+    import wandb
+    import shutil
+    """
+    download config file from api wandb
+
+    Parameters:
+    wandb_entity (str): Global path to the config directory.
+    wandb_project (str): name of the ".yaml" file.
+    sweep_name (str): name of the sweep
+
+    Returns:
+    dict: config file.
+    """
+    # Initialize the W&B API
+    api = wandb.Api()
+    
+    # Get all runs for the specified project
+    runs = api.runs(f"{wandb_entity}/{wandb_project}")
+        
+    target_run_id = None
+    found = 0
+    for run in runs:
+        if run.name == sweep_name:
+            target_run_id = run.id
+            found += 1
+    
+    # Check if the run with the specified name was found
+    if found==1:
+        logging.info(f"Found run '{sweep_name}' with ID '{target_run_id}'")
+        
+        # Download the configuration file for the found run
+        run = api.run(f"{wandb_entity}/{wandb_project}/{target_run_id}")
+        config_file = run.file(CONFIG_FILE_NAME)
+        config_file.download(replace=True)
+        shutil.move("./" + CONFIG_FILE_NAME, os.path.join(download_path, CONFIG_FILE_NAME))
+        with open(os.path.join(download_path, CONFIG_FILE_NAME)) as ff:
+            config_data = yaml.safe_load(ff)
+    else:
+        logging.error(f"ERROR Run '{sweep_name}' found="+str(found))
+        raise ValueError(f"ERROR Run '{sweep_name}' found="+str(found))
+    
+    return config_data
     
     
 def reload_models(models_path, evalute_mode, configs, device):
@@ -129,7 +183,7 @@ def reload_models(models_path, evalute_mode, configs, device):
             models_encoder[sweep_name] = nn_tools.define_MLP_model(
                 hidden_layers_encoder+[output_encoder], input_encoder, bn=True
             ).to(device)
-
+        
         models_encoder[sweep_name].load_state_dict(torch.load(load_encoder_model_path))
         models_encoder[sweep_name].eval();
         logging.info(f"Loaded model encoder: {load_encoder_model_path.split('/')[-2]}")

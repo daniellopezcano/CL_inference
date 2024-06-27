@@ -135,7 +135,7 @@ def simple_plot(x_label='x', y_label='y', custom_labels=None, custom_lines=None)
     return fig, ax
 
 
-def get_config_files(models_path, select_N_best_runs=1, handpicked_sweeps=None):
+def get_config_files(models_path, wandb_entity, select_N_best_runs=1, handpicked_sweeps=None):
     
     fig, ax, selected_sweeps = plot_sweeps_loss(models_path, select_N_best_runs=select_N_best_runs)
 
@@ -156,7 +156,7 @@ def get_config_files(models_path, select_N_best_runs=1, handpicked_sweeps=None):
     if handpicked_sweeps is not None:
         selected_sweeps = handpicked_sweeps
     
-    configs = evaluation_tools.load_configs_file(models_path, selected_sweeps)
+    configs = evaluation_tools.load_configs_files(models_path, selected_sweeps, wandb_entity)
 
     custom_lines = [
         mpl.lines.Line2D([0], [0], color='k', ls='-', lw=3, marker=None, markersize=9),
