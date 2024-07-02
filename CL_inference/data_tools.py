@@ -1,3 +1,9 @@
+NUMPY_FILE_NAME_COSMOS   = "cosmos.npy"
+NUMPY_FILE_NAME_XX       = "xx.npy"
+NUMPY_FILE_NAME_EXT_AUGS = "extended_aug_params.npy"
+NUMPY_FILE_NAME_MEAN     = "mean.npy"
+NUMPY_FILE_NAME_STD      = "std.npy"
+
 """
 This module contains functions for loading generated datasets and defining dataloader structures
 that can be used for drawing batches during training and other utilities
@@ -47,7 +53,7 @@ def load_stored_data(path_load, list_model_names, return_len_models=False, inclu
     len_models = []
     for ii, model_name in enumerate(list_model_names):
         logging.info('Loading ' + model_name + '...')
-        with open(os.path.join(path_load, model_name + '_cosmos.npy'), 'rb') as ff:
+        with open(os.path.join(path_load, model_name + '_' + NUMPY_FILE_NAME_COSMOS), 'rb') as ff:
             tmp_theta = np.load(ff)
             if ii == 0:
                 theta = tmp_theta
@@ -55,10 +61,10 @@ def load_stored_data(path_load, list_model_names, return_len_models=False, inclu
                 assert np.sum(tmp_theta != theta) == 0, "All theta values must coincide for the different models!"
                 theta = tmp_theta
             
-        with open(os.path.join(path_load, model_name + '_xx.npy'), 'rb') as ff:
+        with open(os.path.join(path_load, model_name + '_' + NUMPY_FILE_NAME_XX), 'rb') as ff:
             loaded_xx = np.load(ff)
         if include_baryon_params:
-            with open(os.path.join(path_load, model_name + '_extended_aug_params.npy'), 'rb') as ff:
+            with open(os.path.join(path_load, model_name + '_' + NUMPY_FILE_NAME_EXT_AUGS), 'rb') as ff:
                 loaded_aug_params = np.load(ff)
             
         len_models.append(loaded_xx.shape[1])
@@ -116,6 +122,46 @@ def draw_indexes_augs(NN_augs, batch_size, NN_aug_draws, seed=0):
     return indexes_augs
     
 
+def def_data_loader(
+    path_load,
+    list_model_names,
+    dset_type,
+    dset_dict,
+    include_baryon_params=False,
+    normalize=False,
+    path_save_norm=None,
+    path_load_norm=None,
+    NN_augs_batch=None,
+    return_len_models=False
+):
+    logging.info('Defining data loader...')
+    assert dset_type in ("baccoemu", "Akhmetzhanova")
+    
+    if include_baryon_params:
+        loaded_theta, loaded_xx, loaded_aug_params, len_models = load_stored_data(
+            path_load=path_load, list_model_names=list_model_names, include_baryon_params=include_baryon_params, return_len_models=True
+        )
+    else:
+        loaded_theta, loaded_xx, len_models = load_stored_data(path_load=path_load, list_model_names=list_model_names, include_baryon_params=include_baryon_params, return_len_models=True)
+        loaded_aug_params = None
+    
+    if dset_type == "baccoemu":
+        dset = data_loader(
+            loaded_theta, loaded_xx, aug_params=loaded_aug_params, normalize=normalize, path_save_norm=path_save_norm, path_load_norm=path_load_norm,
+            NN_augs_batch=NN_augs_batch, **dset_dict
+        )
+    if dset_type == "Akhmetzhanova":
+        dset = data_loader_Akhmetzhanova(
+            loaded_theta, loaded_xx, aug_params=loaded_aug_params, normalize=normalize, path_save_norm=path_save_norm, path_load_norm=path_load_norm,
+            NN_augs_batch=NN_augs_batch, **dset_dict
+        )
+    
+    if return_len_models:
+        return dset, len_models
+    else:
+        return dset
+    
+
 class data_loader():
     """
     Data loader class for loading and processing data.
@@ -144,7 +190,7 @@ class data_loader():
     
     def __init__(
         self, theta, xx, aug_params=None, normalize=False, path_save_norm=None, path_load_norm=None,
-        NN_augs_batch=None, add_noise_Pk=None, kmax=0.6
+        NN_augs_batch=None, add_noise_Pk=None, kmax=0.6, box=2000, gaussian_error_counter_tolerance=20, factor_kmin_cut=4
     ):
         logging.info('Initializing data loader...')
         
@@ -161,14 +207,14 @@ class data_loader():
             tmp_std = np.std(tmp_xx, axis=0)
             if not os.path.exists(path_save_norm):
                 os.makedirs(path_save_norm)
-            np.save(os.path.join(path_save_norm, 'mean.npy'), tmp_mean)
-            np.save(os.path.join(path_save_norm, 'std.npy'), tmp_std)
+            np.save(os.path.join(path_save_norm, NUMPY_FILE_NAME_MEAN), tmp_mean)
+            np.save(os.path.join(path_save_norm, NUMPY_FILE_NAME_STD), tmp_std)
             self.norm_mean = tmp_mean
             self.norm_std = tmp_std
         elif normalize and (path_load_norm is not None) and (path_save_norm is None):
             logging.info('Loading normalization parameters...')
-            self.norm_mean = np.load(os.path.join(path_load_norm, 'mean.npy'))
-            self.norm_std = np.load(os.path.join(path_load_norm, 'std.npy'))
+            self.norm_mean = np.load(os.path.join(path_load_norm, NUMPY_FILE_NAME_MEAN))
+            self.norm_std = np.load(os.path.join(path_load_norm, NUMPY_FILE_NAME_STD))
         else:
             self.norm_mean = 0.
             self.norm_std = 1.
@@ -179,8 +225,11 @@ class data_loader():
             self.NN_augs_batch = self.NN_augs
         assert self.NN_augs >= self.NN_augs_batch, "You are asking for more augmentation draws than available"
         
-        self.add_noise_Pk = add_noise_Pk
-        self.kmax = kmax
+        self.add_noise_Pk                     = add_noise_Pk
+        self.kmax                             = kmax
+        self.box                              = box
+        self.gaussian_error_counter_tolerance = gaussian_error_counter_tolerance
+        self.factor_kmin_cut                  = factor_kmin_cut
         
     def __call__(
         self,
@@ -192,9 +241,199 @@ class data_loader():
         use_all_dataset_augs_ordered=False,
         to_torch=False,
         device="cpu",
-        box=2000,
-        gaussian_error_counter_tolerance=20,
-        factor_kmin_cut=4
+    ):
+        """
+        Call function to generate data batches.
+        
+        Parameters
+        ----------
+        batch_size : int
+            Batch size.
+        seed : str or int, optional
+            Random seed, by default "random".
+        return_indexes_sampled : bool, optional
+            Whether to return sampled indexes, by default False.
+        indexes_cosmo : numpy.ndarray, optional
+            Pre-defined cosmological indexes, by default None.
+        indexes_augs : numpy.ndarray, optional
+            Pre-defined augmentation indexes, by default None.
+        use_all_dataset_augs_ordered : bool, optional
+            Whether to use all dataset augmentations in order, by default False.
+        to_torch : bool, optional
+            Whether to convert data to torch tensors, by default False.
+        device : str, optional
+            Device for torch tensors, by default "cpu".
+        
+        Returns
+        -------
+        tuple
+            Batches of theta, xx, and optionally aug_params and sampled indexes.
+        """
+        logging.debug('Generating data batch...')
+        
+        if seed == "random":
+            seed = datetime.datetime.now().microsecond % 13037
+        np.random.seed(seed=seed)
+
+        if type(indexes_cosmo) != type(np.array([])):
+            indexes_cosmo = np.random.choice(self.NN_cosmos, batch_size, replace=False)
+        if type(indexes_augs) != type(np.array([])):
+            indexes_augs = draw_indexes_augs(self.NN_augs, batch_size, self.NN_augs_batch, seed=seed)
+        if use_all_dataset_augs_ordered:
+            indexes_cosmo = np.arange(self.NN_cosmos)
+            indexes_augs = np.repeat(np.arange(self.NN_augs)[np.newaxis], repeats=self.NN_cosmos, axis=0)
+        
+        batch_size = indexes_cosmo.shape[0]
+        NN_augs_batch = indexes_augs.shape[-1]
+            
+        theta_batch = self.theta[indexes_cosmo]
+        if to_torch:
+             theta_batch  = torch.from_numpy(theta_batch.astype(np.float32)).to(device)
+             
+        if self.aug_params is not None:
+            tmp_aug_params = self.aug_params[indexes_cosmo]
+            tmp_aug_params_batch = []
+            for ii in range(indexes_augs.shape[1]):
+                tmp_aug_params_batch.append(tmp_aug_params[np.arange(batch_size), indexes_augs[:, ii]])
+            aug_params_batch = np.transpose(np.array(tmp_aug_params_batch), (1, 0, 2))
+            if to_torch:
+                aug_params_batch = torch.from_numpy(aug_params_batch.astype(np.float32)).to(device)
+        else:
+            aug_params_batch = None
+            
+        tmp_xx = self.xx[indexes_cosmo]
+        tmp_xx_batch = []
+        for ii in range(indexes_augs.shape[1]):
+            tmp_xx_batch.append(tmp_xx[np.arange(batch_size), indexes_augs[:, ii]])
+        xx_batch = np.transpose(np.array(tmp_xx_batch), (1, 0, 2))
+        
+        if self.add_noise_Pk == "cosmic_var_gauss":
+            tmp_pk = 10**(xx_batch * self.norm_std + self.norm_mean)
+            
+            kf = 2.0 * np.pi / self.box
+            kmin = np.log10(self.factor_kmin_cut * kf)
+            N_kk = int((self.kmax - kmin) / (8 * kf))
+            kk_log = np.logspace(kmin, self.kmax, num=N_kk)
+            delta_log10kk = (np.log10(kk_log[1]) - np.log10(kk_log[0])) / 2
+            kk_edges_log = 10**np.append(np.log10(kk_log) - delta_log10kk, np.log10(kk_log[-1]) + delta_log10kk)
+            delta_kk = np.diff(kk_edges_log)
+            cosmic_var_gauss_err = np.sqrt((4 * np.pi**2) / (self.box**3 * kk_log**2 * delta_kk)) * tmp_pk
+            
+            valid_sample = False
+            while_counter = 0
+            while not valid_sample:
+                samples_pk = np.random.normal(loc=tmp_pk, scale=cosmic_var_gauss_err, size=tmp_pk.shape)
+                if np.sum(samples_pk < 0) == 0:
+                    valid_sample = True
+                else:
+                    while_counter += 1
+                    tmp_indexes = np.where(samples_pk < 0)
+                    logging.warning(f"WARNING ({while_counter} / {self.gaussian_error_counter_tolerance}): gaussian error approximation failed. "
+                                    f"# Corrupted samples = {len(tmp_indexes[0])} / {samples_pk.shape[0] * samples_pk.shape[0]}")
+                    if while_counter > self.gaussian_error_counter_tolerance:
+                        import matplotlib as mpl
+                        import matplotlib.pyplot as plt
+                        fig, ax = plt.subplots(1, 1, figsize=(6, 4))
+                        ax.set_title(f'# Corrupted samples = {len(tmp_indexes[0])} / {samples_pk.shape[0] * samples_pk.shape[0]}', fontsize=16)
+                        ax.set_xlabel(r'$\mathrm{Wavenumber}\, k \left[ h\, \mathrm{Mpc}^{-1} \right]$')
+                        ax.set_ylabel(r'$P(k) \left[ \left(h^{-1} \mathrm{Mpc}\right)^{3} \right]$')
+                        ax.set_xscale('log')
+                        ax.set_yscale('log')
+                        ax.plot(kk_log, samples_pk[tmp_indexes[0], tmp_indexes[1]].T, c='k', alpha=0.9, marker=None, lw=0.5, ms=2)
+                        fig.tight_layout()
+                        fig.savefig('./gaussian_error_approximation_failed.png')
+                        assert False, f"ERROR: gaussian error approximation failed!!. Cosmology indexes: {tmp_indexes[0]}. Augmentation indexes: {tmp_indexes[1]}"
+                        
+            xx_batch = (np.log10(samples_pk) - self.norm_mean) / self.norm_std 
+        
+        if to_torch:
+            xx_batch = torch.from_numpy(xx_batch.astype(np.float32)).to(device)
+        
+        if return_indexes_sampled:
+            return theta_batch, xx_batch, aug_params_batch, indexes_cosmo, indexes_augs
+        else:
+            return theta_batch, xx_batch, aug_params_batch
+
+
+class data_loader_Akhmetzhanova():
+    """
+    Data loader class for loading and processing data.
+    
+    Parameters
+    ----------
+    theta : numpy.ndarray
+        Array of theta values.
+    xx : numpy.ndarray
+        Array of x values.
+    aug_params : numpy.ndarray, optional
+        Array of augmentation parameters, by default None.
+    normalize : bool, optional
+        Whether to normalize the data, by default False.
+    path_save_norm : str, optional
+        Path to save normalization parameters, by default None.
+    path_load_norm : str, optional
+        Path to load normalization parameters, by default None.
+    NN_augs_batch : int, optional
+        Number of augmentation draws per batch, by default None.
+    add_noise_Pk : str, optional
+        Method to add noise to Pk, by default None.
+    kmax : float, optional
+        Maximum wavenumber, by default 0.6.
+    """
+    
+    def __init__(
+        self, theta, xx, aug_params=None, normalize=False, path_save_norm=None, path_load_norm=None,
+        NN_augs_batch=None, add_noise_Pk=None, kmin=3., kmax=142., k_F=0.6, NN_k=140
+    ):
+        logging.info('Initializing data loader...')
+        
+        self.theta      = theta
+        self.xx         = xx
+        self.aug_params = aug_params
+        self.NN_cosmos  = self.theta.shape[0]
+        self.NN_augs    = self.xx.shape[1]
+        
+        if normalize and (path_save_norm is not None) and (path_load_norm is None):
+            logging.info('Normalizing data and saving normalization parameters...')
+            tmp_xx = np.reshape(self.xx, tuple([self.xx.shape[0] * self.xx.shape[1],] + list(self.xx.shape[2:])))
+            tmp_mean = np.mean(tmp_xx, axis=0)
+            tmp_std = np.std(tmp_xx, axis=0)
+            if not os.path.exists(path_save_norm):
+                os.makedirs(path_save_norm)
+            np.save(os.path.join(path_save_norm, NUMPY_FILE_NAME_MEAN), tmp_mean)
+            np.save(os.path.join(path_save_norm, NUMPY_FILE_NAME_STD), tmp_std)
+            self.norm_mean = tmp_mean
+            self.norm_std = tmp_std
+        elif normalize and (path_load_norm is not None) and (path_save_norm is None):
+            logging.info('Loading normalization parameters...')
+            self.norm_mean = np.load(os.path.join(path_load_norm, NUMPY_FILE_NAME_MEAN))
+            self.norm_std = np.load(os.path.join(path_load_norm, NUMPY_FILE_NAME_STD))
+        else:
+            self.norm_mean = 0.
+            self.norm_std = 1.
+        self.xx = (self.xx - self.norm_mean) / self.norm_std        
+        
+        self.NN_augs_batch = NN_augs_batch
+        if self.NN_augs_batch is None:
+            self.NN_augs_batch = self.NN_augs
+        assert self.NN_augs >= self.NN_augs_batch, "You are asking for more augmentation draws than available"
+        
+        self.add_noise_Pk = add_noise_Pk
+        self.kmin         = kmin
+        self.kmax         = kmax
+        self.k_F          = k_F
+        self.NN_k         = NN_k
+        
+    def __call__(
+        self,
+        batch_size,
+        seed="random",
+        return_indexes_sampled=False,
+        indexes_cosmo=None,
+        indexes_augs=None,
+        use_all_dataset_augs_ordered=False,
+        to_torch=False,
+        device="cpu"
     ):
         """
         Call function to generate data batches.
@@ -270,14 +509,9 @@ class data_loader():
         if self.add_noise_Pk == "cosmic_var_gauss":
             tmp_pk = 10**(xx_batch * self.norm_std + self.norm_mean)
             
-            kf = 2.0 * np.pi / box
-            kmin = np.log10(factor_kmin_cut * kf)
-            N_kk = int((self.kmax - kmin) / (8 * kf))
-            kk_log = np.logspace(kmin, self.kmax, num=N_kk)
-            delta_log10kk = (np.log10(kk_log[1]) - np.log10(kk_log[0])) / 2
-            kk_edges_log = 10**np.append(np.log10(kk_log) - delta_log10kk, np.log10(kk_log[-1]) + delta_log10kk)
-            delta_kk = np.diff(kk_edges_log)
-            cosmic_var_gauss_err = np.sqrt((4 * np.pi**2) / (box**3 * kk_log**2 * delta_kk)) * tmp_pk
+            kk = np.linspace(self.kmin, self.kmax, self.NN_k)*self.k_F
+            N_k = (4 * np.pi * kk**2 * self.k_F) / self.k_F**3
+            cosmic_var_gauss_err = np.sqrt(2/N_k) * tmp_pk
             
             valid_sample = False
             while_counter = 0
@@ -313,59 +547,3 @@ class data_loader():
             return theta_batch, xx_batch, aug_params_batch, indexes_cosmo, indexes_augs
         else:
             return theta_batch, xx_batch, aug_params_batch
-
-            
-def def_data_loader(
-    path_load,
-    list_model_names,
-    normalize=False,
-    path_save_norm=None,
-    path_load_norm=None,
-    NN_augs_batch=None,
-    add_noise_Pk=None,
-    kmax=0.6,
-    include_baryon_params=False
-):
-    """
-    Define data loader with specified parameters.
-    
-    Parameters
-    ----------
-    path_load : str
-        Path to load data from.
-    list_model_names : list
-        List of model names to load.
-    normalize : bool, optional
-        Whether to normalize the data, by default False.
-    path_save_norm : str, optional
-        Path to save normalization parameters, by default None.
-    path_load_norm : str, optional
-        Path to load normalization parameters, by default None.
-    NN_augs_batch : int, optional
-        Number of augmentation draws per batch, by default None.
-    add_noise_Pk : str, optional
-        Method to add noise to Pk, by default None.
-    kmax : float, optional
-        Maximum wavenumber, by default 0.6.
-    include_baryon_params : bool, optional
-        Whether to include baryon parameters, by default False.
-    
-    Returns
-    -------
-    data_loader
-        Instance of the data_loader class.
-    """
-    logging.info('Defining data loader...')
-    
-    if include_baryon_params:
-        loaded_theta, loaded_xx, loaded_aug_params = load_stored_data(path_load=path_load, list_model_names=list_model_names, include_baryon_params=include_baryon_params)
-    else:
-        loaded_theta, loaded_xx = load_stored_data(path_load=path_load, list_model_names=list_model_names, include_baryon_params=include_baryon_params)
-        loaded_aug_params = None
-    
-    dset = data_loader(
-        loaded_theta, loaded_xx, aug_params=loaded_aug_params, normalize=normalize, path_save_norm=path_save_norm, path_load_norm=path_load_norm,
-        NN_augs_batch=NN_augs_batch, add_noise_Pk=add_noise_Pk, kmax=kmax
-    )
-    
-    return dset

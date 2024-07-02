@@ -1,9 +1,13 @@
-import os, sys
+import os
+import sys
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
 import scipy as sp
+import logging
+
 from . import evaluation_tools
+
 
 def matplotlib_default_config():
 
@@ -152,6 +156,7 @@ def get_config_files(models_path, wandb_entity, select_N_best_runs=1, handpicked
 
     ax.set_title(models_path.split('/')[-1], fontsize=16)
     fig.set_tight_layout(True)
+    fig.savefig(models_path + "/losses.png")
     
     if handpicked_sweeps is not None:
         selected_sweeps = handpicked_sweeps
@@ -185,7 +190,7 @@ def get_config_files(models_path, wandb_entity, select_N_best_runs=1, handpicked
     legend = ax.legend(custom_lines1, custom_labels1, loc='upper left', fancybox=True, shadow=True, ncol=1,fontsize=12)
     ax.add_artist(legend)
     fig.set_tight_layout(True)
-    fig.savefig(models_path + "/losses.png")
+    fig.savefig(models_path + "/loss_best_models.png")
     
     return configs
 
@@ -259,102 +264,169 @@ def plot_sweeps_loss(models_path, select_N_best_runs=1):
     return fig, ax, selected_sweeps
 
 
-def get_titles_limits_and_priors(include_baryon_params=True):
-
-    custom_titles=[
-        r'$\Omega_\mathrm{c}$',
-        r'$\Omega_\mathrm{b}$',
-        r'$h$',
-        r'$n_\mathrm{s}$',
-        r'$\sigma_{8,\mathrm{c}}$'
-    ]
-    limits_plots_inference = [
-        [0.23, 0.4],
-        [0.038, 0.062],
-        [0.60, 0.80],
-        [0.92, 1.01],
-        [0.73, 0.9]
-    ]
-    list_range_priors = [
-        [0.24, 0.39],
-        [0.041, 0.059],
-        [0.61, 0.79],
-        [0.93, 1.0],
-        [0.74, 0.89]
-    ]
-
-    if include_baryon_params:
-        custom_titles_aug_params =[
-            r'$M_\mathrm{c}$',
-            r'$\eta$',
-            r'$\beta$',
-            r'$M_{1, z_0, \mathrm{cen}}$',
-            r'$\theta_\mathrm{out}$',
-            r'$\theta_\mathrm{in}$',
-            r'$M_\mathrm{inn}$'
-        ]
-        limits_plots_inference_aug_params = [
-            [8.5, 15.5],
-            [-0.75, 0.75],
-            [-1.1, 0.8],
-            [8.9, 13.1],
-            [-0.05, 0.52],
-            [-2.1, -0.423],
-            [8.8, 13.7]
-        ]
-
-        list_range_priors_aug_params = [
-            [9.0, 15.0],
-            [-0.69, 0.69],
-            [-1.00, 0.69],
-            [9.0, 13.0],
-            [0., 0.47],
-            [-2.0, -0.523],
-            [9.0, 13.5]
-        ]
-
-        custom_titles.extend(custom_titles_aug_params)
-        limits_plots_inference.extend(limits_plots_inference_aug_params)
-        list_range_priors.extend(list_range_priors_aug_params)
+def get_titles_limits_priors_and_colors_dset_models(dset_type, dset_dict, list_model_names, include_baryon_params=True):
     
-    return custom_titles, limits_plots_inference, list_range_priors
-
-
-def colors_dsets(list_model_names):
-
-    colors_fixed = list(get_N_colors(10, mpl.colormaps['cool']))
-    colors_dict = {
-        "Model_vary_all"        : "grey",
-
-        "Model_vary_1"          : "#1F77B4",
-        "Model_vary_2"          : "#FF7F0E",
-        "Model_vary_3"          : "#2CA02C",
-
-        "Model_fixed_0"         : colors_fixed[0],
-        "Model_fixed_1"         : colors_fixed[1],
-        "Model_fixed_2"         : colors_fixed[2],
-        "Model_fixed_3"         : colors_fixed[3],
-        "Model_fixed_4"         : colors_fixed[4],
-        "Model_fixed_5"         : colors_fixed[5],
-        "Model_fixed_6"         : colors_fixed[6],
-        "Model_fixed_7"         : colors_fixed[7],
-        "Model_fixed_8"         : colors_fixed[8],
-        "Model_fixed_9"         : colors_fixed[9],
-
-        "Model_fixed_eagle"     : "#D62728",
-        "Model_fixed_illustris" : "#9467BD",
-        "Model_fixed_bahamas"   : "#8C564B"
-    }
+    if dset_type == "baccoemu":
     
-    selected_colors = []
-    for ii, model_name in enumerate(list_model_names):
-        for jj, key in enumerate(colors_dict.keys()):
-            if model_name == key:
-                selected_colors.append(colors_dict[key])
-                
-    assert len(selected_colors) == len(list_model_names), "ERROR: invalid list_model_names provided"
+        colors_fixed = list(get_N_colors(10, mpl.colormaps['cool']))
+        colors_dict = {
+            "Model_vary_all"        : "grey",
+
+            "Model_vary_1"          : "#1F77B4",
+            "Model_vary_2"          : "#FF7F0E",
+            "Model_vary_3"          : "#2CA02C",
+
+            "Model_fixed_0"         : colors_fixed[0],
+            "Model_fixed_1"         : colors_fixed[1],
+            "Model_fixed_2"         : colors_fixed[2],
+            "Model_fixed_3"         : colors_fixed[3],
+            "Model_fixed_4"         : colors_fixed[4],
+            "Model_fixed_5"         : colors_fixed[5],
+            "Model_fixed_6"         : colors_fixed[6],
+            "Model_fixed_7"         : colors_fixed[7],
+            "Model_fixed_8"         : colors_fixed[8],
+            "Model_fixed_9"         : colors_fixed[9],
+
+            "Model_fixed_eagle"     : "#D62728",
+            "Model_fixed_illustris" : "#9467BD",
+            "Model_fixed_bahamas"   : "#8C564B"
+        }
+        selected_colors = []
+        for ii, model_name in enumerate(list_model_names):
+            for jj, key in enumerate(colors_dict.keys()):
+                if model_name == key:
+                    selected_colors.append(colors_dict[key])
     
-    return selected_colors
+        custom_titles=[
+            r'$\Omega_\mathrm{c}$',
+            r'$\Omega_\mathrm{b}$',
+            r'$h$',
+            r'$n_\mathrm{s}$',
+            r'$\sigma_{8,\mathrm{c}}$'
+        ]
+        limits_plots_inference = [
+            [0.23, 0.4],
+            [0.038, 0.062],
+            [0.60, 0.80],
+            [0.92, 1.01],
+            [0.73, 0.9]
+        ]
+        list_range_priors = [
+            [0.24, 0.39],
+            [0.041, 0.059],
+            [0.61, 0.79],
+            [0.93, 1.0],
+            [0.74, 0.89]
+        ]
+
+        if include_baryon_params:
+            custom_titles_aug_params =[
+                r'$M_\mathrm{c}$',
+                r'$\eta$',
+                r'$\beta$',
+                r'$M_{1, z_0, \mathrm{cen}}$',
+                r'$\theta_\mathrm{out}$',
+                r'$\theta_\mathrm{in}$',
+                r'$M_\mathrm{inn}$'
+            ]
+            limits_plots_inference_aug_params = [
+                [8.5, 15.5],
+                [-0.75, 0.75],
+                [-1.1, 0.8],
+                [8.9, 13.1],
+                [-0.05, 0.52],
+                [-2.1, -0.423],
+                [8.8, 13.7]
+            ]
+
+            list_range_priors_aug_params = [
+                [9.0, 15.0],
+                [-0.69, 0.69],
+                [-1.00, 0.69],
+                [9.0, 13.0],
+                [0., 0.47],
+                [-2.0, -0.523],
+                [9.0, 13.5]
+            ]
+
+            custom_titles.extend(custom_titles_aug_params)
+            limits_plots_inference.extend(limits_plots_inference_aug_params)
+            list_range_priors.extend(list_range_priors_aug_params)
+            
+        box             = dset_dict['box']
+        factor_kmin_cut = dset_dict['factor_kmin_cut']
+        kmax            = dset_dict['kmax']
+
+        kf = 2.0 * np.pi / box
+        kmin=np.log10(factor_kmin_cut*kf)
+        N_kk = int((kmax - kmin) / (8*kf))
+        xx_domain = np.logspace(kmin, kmax, num=N_kk)
+            
+        thresholds_bias=np.linspace(0.5, 6, 20)
+        NN_bins_hist_bias = 60
+        NN_bins_hist_err = 60
+        NN_avail_cosmo_test = 2048
+        NN_split = 20
+        max_err_hist = [0.05, 0.012, 0.12, 0.042, 0.06, 3.2, 1.5, 1.5, 3., .4, 1., 3.]
+            
+    elif dset_type == "Akhmetzhanova":
+    
+        colors_dict = {"ModelA" : "royalblue"}
+        selected_colors = []
+        for ii, model_name in enumerate(list_model_names):
+            for jj, key in enumerate(colors_dict.keys()):
+                if model_name == key:
+                    selected_colors.append(colors_dict[key])
+    
+        custom_titles=[
+            r'$A$',
+            r'$B$'
+        ]
+        limits_plots_inference = [
+            [0., 1.1],
+            [-1.1, 0.1]
+        ]
+        list_range_priors = [
+            [0.1, 1.],
+            [-1., 0.]
+        ]
+
+        if include_baryon_params:
+            custom_titles_aug_params =[
+                r'$D$'
+            ]
+            limits_plots_inference_aug_params = [
+                [-0.6, 0.6]
+            ]
+
+            list_range_priors_aug_params = [
+                [-0.5, 0.5]
+            ]
+            
+            custom_titles.extend(custom_titles_aug_params)
+            limits_plots_inference.extend(limits_plots_inference_aug_params)
+            list_range_priors.extend(list_range_priors_aug_params)
+            
+        kmin  = dset_dict['kmin']
+        kmax  = dset_dict['kmax']
+        NN_k = dset_dict['NN_k']
+        k_F   = dset_dict['k_F']
+        
+        xx_domain = np.linspace(kmin, kmax, NN_k)*k_F
+        
+        thresholds_bias=np.linspace(0.5, 6, 20)
+        NN_bins_hist_bias = 60
+        NN_bins_hist_err = 60
+        NN_avail_cosmo_test = 1000
+        NN_split = 20
+        max_err_hist = [0.1, 0.1, 1.]
+            
+    else:
+        logging.error('Unknown dset_type: %s', dset_type)
+        raise ValueError(f"Unknown dset_type: {dset_type}")
+    
+    return custom_titles, limits_plots_inference, list_range_priors, xx_domain, selected_colors, thresholds_bias, NN_bins_hist_bias, NN_bins_hist_err, NN_avail_cosmo_test, NN_split, max_err_hist
+
     
 def colors_combined_dsets():
 
@@ -592,9 +664,9 @@ def plot_dataset_Pk(dset_norm_mean, dset_norm_std, xx, list_model_names, len_mod
         axs[1].set_xlabel(r'$\mathrm{Wavenumber}\, k \left[ h\, \mathrm{Mpc}^{-1} \right]$')
         axs[1].set_ylabel(r'$P_\mathrm{Model}(k) / P_\mathrm{mean\, , train}(k)$')
         xx_plot = 10**(xx*dset_norm_std + dset_norm_mean)
-        for kmax_plot in np.array([0.6, 0.2, -0.2, -0.6, -1.0, -1.4]):
-            axs[0].axvline(10**kmax_plot, c='k', ls=':', lw=1.)
-            axs[1].axvline(10**kmax_plot, c='k', ls=':', lw=1.)
+        # for kmax_plot in np.array([0.6, 0.2, -0.2, -0.6, -1.0, -1.4]):
+            # axs[0].axvline(10**kmax_plot, c='k', ls=':', lw=1.)
+            # axs[1].axvline(10**kmax_plot, c='k', ls=':', lw=1.)
     else:
         axs[0].set_ylabel(r'$\mathrm{Norm}\left(P(k) \left[ \left(h^{-1} \mathrm{Mpc}\right)^{3} \right]\right)$')
         axs[1].set_xlabel('$k - index [adim]$')
@@ -640,15 +712,15 @@ def plot_dataset_Pk(dset_norm_mean, dset_norm_std, xx, list_model_names, len_mod
     if plot_as_Pk:
         axs[0].set_xscale('log')
         axs[0].set_yscale('log')
-        axs[0].set_xlim([0.01, 4.5])
-        axs[0].set_ylim([30., 70000.])
+        # axs[0].set_xlim([0.01, 4.5])
+        # axs[0].set_ylim([30., 70000.])
         axs[1].set_xscale('log')
-        axs[1].set_xlim([0.01, 4.5])
-        axs[1].set_ylim([0.8, 1.2])
+        # axs[1].set_xlim([0.01, 4.5])
+        # axs[1].set_ylim([0.8, 1.2])
     else:
-        axs[0].set_xlim([0., 100.])
+        axs[0].set_xlim([0., len(kk)])
         axs[0].set_ylim([-2.5, 2.5])
-        axs[1].set_xlim([0., 100.])
+        axs[1].set_xlim([0., len(kk)])
         axs[1].set_ylim([-10, 10])
     axs[0].set_xticklabels([])
 
@@ -784,12 +856,12 @@ def plot_dataset_biased_latents(hh_biased, hh_biased_from_train):
     for ii_cosmo in range(NN_plot):
         for ii_model_net, sweep_name in enumerate(hh_biased.keys()):
             ax.scatter(
-                hh_biased[sweep_name][ii_cosmo, :][...,0], hh_biased[sweep_name][ii_cosmo, :][...,1],
-                c="red", marker=markers[ii_cosmo], s=40
+                hh_biased_from_train[sweep_name][ii_cosmo, :][...,0], hh_biased_from_train[sweep_name][ii_cosmo, :][...,1],
+                c="grey", marker=markers[ii_cosmo], s=40, alpha=0.7
             )
             ax.scatter(
-                hh_biased_from_train[sweep_name][ii_cosmo, :][...,0], hh_biased_from_train[sweep_name][ii_cosmo, :][...,1],
-                c="grey", marker=markers[ii_cosmo], s=40
+                hh_biased[sweep_name][ii_cosmo, :][...,0], hh_biased[sweep_name][ii_cosmo, :][...,1],
+                c="red", marker=markers[ii_cosmo], s=40
             )
         custom_lines1.append(mpl.lines.Line2D([0],[0],color='grey',ls='',lw=3,marker=markers[ii_cosmo],markersize=8))
         custom_labels1.append("Cosmo #" + str(ii_cosmo))

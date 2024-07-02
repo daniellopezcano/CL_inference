@@ -83,11 +83,9 @@ def wrapper_train_from_config(
     list_model_names,
     normalize,
     NN_augs_batch,
-    add_noise_Pk,
-    box,
-    factor_kmin_cut,
-    kmax,
     include_baryon_params,
+    dset_type, 
+    dset_dict,
     train_mode,
     inference_loss,
     load_encoder_model_path,
@@ -142,28 +140,28 @@ def wrapper_train_from_config(
 
     dset_name = "TRAIN"
     dsets[dset_name] = data_tools.def_data_loader(
-        path_load               = os.path.join(path_load, dset_name),
-        list_model_names        = list_model_names,
-        normalize               = normalize,
-        path_save_norm          = path_save,
-        path_load_norm          = None,
-        NN_augs_batch           = NN_augs_batch,
-        add_noise_Pk            = add_noise_Pk,
-        kmax                    = kmax,
-        include_baryon_params   = include_baryon_params
+        path_load             = os.path.join(path_load, dset_name),
+        list_model_names      = list_model_names,
+        dset_type             = dset_type,
+        dset_dict             = dset_dict,
+        include_baryon_params = include_baryon_params,
+        normalize             = normalize,
+        path_save_norm        = path_save,
+        path_load_norm        = None,
+        NN_augs_batch         = NN_augs_batch
     )
 
     dset_name = "VAL"
     dsets[dset_name] = data_tools.def_data_loader(
-        path_load               = os.path.join(path_load, dset_name),
-        list_model_names        = list_model_names,
-        normalize               = normalize,
-        path_save_norm          = None,
-        path_load_norm          = path_save,
-        NN_augs_batch           = NN_augs_batch,
-        add_noise_Pk            = add_noise_Pk,
-        kmax                    = kmax,
-        include_baryon_params   = include_baryon_params
+        path_load             = os.path.join(path_load, dset_name),
+        list_model_names      = list_model_names,
+        dset_type             = dset_type,
+        dset_dict             = dset_dict,
+        include_baryon_params = include_baryon_params,
+        normalize             = normalize,
+        path_save_norm        = None,
+        path_load_norm        = path_save,
+        NN_augs_batch         = NN_augs_batch
     )
 
     # ---------------------------------------------------------------------- #
@@ -233,8 +231,6 @@ def wrapper_train_from_config(
         seed_mode=seed_mode, # 'random', 'deterministic' or 'overfit'
         seed=seed, # only relevant if mode is 'overfit'
         path_save=path_save,
-        box=box,
-        factor_kmin_cut=factor_kmin_cut,
         **kwargs
     )
     

@@ -93,7 +93,7 @@ def train_model(
     NN_epochs=300, NN_batches_per_epoch=10, batch_size=16, lr=1e-3, weight_decay=0., clip_grad_norm=None,
     seed_mode="random", # 'random', 'deterministic' or 'overfit'
     seed=0, # only relevant if mode is 'overfit'
-    dset_val=None, batch_size_val=16, path_save=None, box=2000, factor_kmin_cut=4,
+    dset_val=None, batch_size_val=16, path_save=None,
     **kwargs
     ):
     """
@@ -116,8 +116,6 @@ def train_model(
     - dset_val: Validation dataset.
     - batch_size_val (int): Batch size for validation.
     - path_save (str, optional): Path to save the model.
-    - box (float): Box size parameter.
-    - factor_kmin_cut (float): Factor kmin cut parameter.
     - **kwargs: Additional keyword arguments to use internally in the functions train_single_epoch & eval_single_epoch
 
     Returns:
@@ -161,7 +159,7 @@ def train_model(
             model_encoder=model_encoder, model_projector=model_projector, model_inference=model_inference,
             NN_batches_per_epoch=NN_batches_per_epoch, batch_size=batch_size, clip_grad_norm=clip_grad_norm,
             seed_mode=seed_mode, seed=seed, seed0=seed0,
-            device=device, save_aux_fig_name_epoch=str(tt), box=box, factor_kmin_cut=factor_kmin_cut,
+            device=device, save_aux_fig_name_epoch=str(tt),
             **kwargs['train']
         )
         # evaluation of the model after training one epoch
@@ -169,7 +167,7 @@ def train_model(
             dset_train=dset_train, dset_val=dset_val, train_mode=train_mode, scheduler=scheduler,
             model_encoder=model_encoder, model_projector=model_projector, model_inference=model_inference,
             path_save=path_save, min_val_loss=min_val_loss, batch_size=batch_size_val, seed=seed,
-            device=device, save_aux_fig_name=str(tt), box=box, factor_kmin_cut=factor_kmin_cut,
+            device=device, save_aux_fig_name=str(tt),
             **kwargs['val']
         )
         
@@ -182,7 +180,7 @@ def train_single_epoch(
     model_encoder, model_projector=None, model_inference=None,
     NN_batches_per_epoch=10, batch_size=16, clip_grad_norm=None,
     seed_mode="random", seed=0, seed0=0,
-    device="cuda", NN_print_progress=None, save_aux_fig_name_epoch=None, box=2000, factor_kmin_cut=4,
+    device="cuda", NN_print_progress=None, save_aux_fig_name_epoch=None,
     **kwargs
     ):
     """
@@ -203,8 +201,6 @@ def train_single_epoch(
     - seed0 (int, optional): Initial seed value.
     - device (str, optional): Device to use for training.
     - save_aux_fig_name_epoch (str, optional): Auxiliary figure name for saving.
-    - box (int, optional): Box size parameter.
-    - factor_kmin_cut (int, optional): Factor kmin cut parameter.
     - **kwargs: Additional keyword arguments.
     """
     if NN_print_progress == None: NN_print_progress=10
@@ -225,7 +221,9 @@ def train_single_epoch(
         # draw batch from dataset
         if seed_mode == "random": seed = datetime.datetime.now().microsecond %13037
         if seed_mode == "deterministic": seed = seed0 + ii_batch
-        theta_true, xx, aug_params = dset_train(batch_size, seed=seed, to_torch=True, device=device, box=box, factor_kmin_cut=factor_kmin_cut)
+        theta_true, xx, aug_params = dset_train(batch_size, seed=seed, to_torch=True, device=device)
+        
+        # ipdb.set_trace()  # Add this line to set an ipdb breakpoint
         
         # compute loss
         LOSS = custom_loss_functions.compute_loss(
@@ -237,8 +235,6 @@ def train_single_epoch(
             save_aux_fig_name=None, # save_aux_fig_name_epoch+'_'+str(ii_batch) <-- to save figures during training... BE CAREFULL, they are going to be A LOT
             **kwargs['loss_hyperparameters']
         )
-        
-        # ipdb.set_trace()  # Add this line to set an ipdb breakpoint
         
         # perform backpropagation (update weights of the model)
         optimizer.zero_grad()
@@ -268,7 +264,8 @@ def eval_single_epoch(
     dset_train, dset_val, train_mode, # "train_CL", "train_inference_from_latents", "train_inference_fully_supervised", or "train_CL_and_inference"
     scheduler, model_encoder, model_projector=None, model_inference=None,
     path_save=None, min_val_loss=None, batch_size=None,
-    device="cuda", seed=0, save_aux_fig_name=None, box=2000, factor_kmin_cut=4, **kwargs
+    device="cuda", seed=0, save_aux_fig_name=None,
+    **kwargs
     ):
     """
     Evaluates a model after training for one epoch.
@@ -287,8 +284,6 @@ def eval_single_epoch(
     - device (str, optional): Device to use for evaluation.
     - seed (int, optional): Seed value.
     - save_aux_fig_name (str, optional): Auxiliary figure name for saving.
-    - box (float, optional): Box size parameter.
-    - factor_kmin_cut (int, optional): Factor kmin cut parameter.
     - **kwargs: Additional keyword arguments.
 
     Returns:
@@ -302,7 +297,7 @@ def eval_single_epoch(
     train_loss = eval_dataset(
         dset_train, train_mode, batch_size,
         model_encoder=model_encoder, model_projector=model_projector, model_inference=model_inference,
-        seed=seed, device=device, box=box, factor_kmin_cut=factor_kmin_cut,
+        seed=seed, device=device, 
         save_aux_fig_name=None, # <-- replace by save_aux_fig_name if you want to print validation plots
         **kwargs
     )
@@ -310,7 +305,7 @@ def eval_single_epoch(
     val_loss = eval_dataset(
         dset_val, train_mode, batch_size,
         model_encoder=model_encoder, model_projector=model_projector, model_inference=model_inference,
-        seed=seed, device=device, box=box, factor_kmin_cut=factor_kmin_cut,
+        seed=seed, device=device,
         save_aux_fig_name=None, # <-- replace by save_aux_fig_name if you want to print validation plots
         **kwargs
     )
@@ -372,7 +367,7 @@ def eval_single_epoch(
 def eval_dataset(
         dset, train_mode, batch_size,
         model_encoder, model_projector=None, model_inference=None,
-        seed=0, device="cuda", save_aux_fig_name=None, box=2000, factor_kmin_cut=4,
+        seed=0, device="cuda", save_aux_fig_name=None,
         **kwargs
     ):
     """
@@ -388,15 +383,13 @@ def eval_dataset(
     - seed (int, optional): Seed value.
     - device (str, optional): Device to use for evaluation.
     - save_aux_fig_name (str, optional): Auxiliary figure name for saving.
-    - box (float, optional): Box size parameter.
-    - factor_kmin_cut (int, optional): Factor kmin cut parameter.
     - **kwargs: Additional keyword arguments for compute_loss.
 
     Returns:
     - LOSS (dict): Dictionary containing the output from compute_loss.
     """
     # draw batch from dataset
-    theta_true, xx, aug_params = dset(batch_size, seed=seed, to_torch=True, device=device, box=box, factor_kmin_cut=factor_kmin_cut)
+    theta_true, xx, aug_params = dset(batch_size, seed=seed, to_torch=True, device=device)
     
     # obtain model predictions & compute loss
     if train_mode == "train_CL":

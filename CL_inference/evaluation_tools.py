@@ -232,39 +232,25 @@ def compute_dataset_results(config, sweep_name_load_norm_dset, list_model_names,
     """
     if next(models_encoder[list(models_encoder.keys())[0]].parameters()).is_cuda: device = "cuda"
     else: device = "cpu"
-    
-    if config['include_baryon_params']:
-        loaded_theta, loaded_xx, loaded_aug_params, len_models = data_tools.load_stored_data(
-            path_load=os.path.join(config['path_load'], dset_key),
-            list_model_names=list_model_names,
-            return_len_models=True,
-            include_baryon_params=config['include_baryon_params']
-        )
-    else:
-        loaded_theta, loaded_xx, len_models = data_tools.load_stored_data(
-            path_load=os.path.join(config['path_load'], dset_key),
-            list_model_names=list_model_names,
-            return_len_models=True,
-            include_baryon_params=config['include_baryon_params']
-        )
-        loaded_aug_params = None
-
-    dset = data_tools.data_loader(
-        loaded_theta,
-        loaded_xx,
-        aug_params=loaded_aug_params,
-        normalize=config['normalize'],
-        path_load_norm = os.path.join(config['path_save'], sweep_name_load_norm_dset),
-        NN_augs_batch = np.sum(len_models),
-        add_noise_Pk=config['add_noise_Pk'],
-        kmax=config['kmax']
+        
+    dset, len_models = data_tools.def_data_loader(
+        path_load             = os.path.join(config['path_load'], dset_key),
+        list_model_names      = list_model_names,
+        dset_type             = config['dset_type'],
+        dset_dict             = config['dset_dict'],
+        include_baryon_params = config['include_baryon_params'],
+        normalize             = config['normalize'],
+        path_load_norm        = os.path.join(config['path_save'], sweep_name_load_norm_dset),
+        NN_augs_batch         = config['NN_augs_batch'],
+        return_len_models     = True
     )
+    
     if (type(indexes_cosmo) == type(np.array([]))) and (type(indexes_augs) != type(np.array([]))):
         indexes_augs=np.repeat(np.arange(dset.NN_augs)[np.newaxis], repeats=len(indexes_cosmo), axis=0)
     
     theta_true, xx, aug_params, indexes_cosmo, indexes_augs = dset(
         0, seed=0, to_torch=True, device=device, use_all_dataset_augs_ordered=use_all_dataset_augs_ordered,
-        indexes_cosmo=indexes_cosmo, indexes_augs=indexes_augs, return_indexes_sampled=True, box=config['box'], factor_kmin_cut=config['factor_kmin_cut']
+        indexes_cosmo=indexes_cosmo, indexes_augs=indexes_augs, return_indexes_sampled=True
     )
     
     theta_true = torch.repeat_interleave(theta_true, xx.shape[1], axis=0)

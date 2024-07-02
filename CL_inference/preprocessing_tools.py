@@ -1,11 +1,13 @@
 """
 This module contains functions for generating power spectrum datasets
 employing baccoemu https://baccoemu.readthedocs.io/en/latest/
+Also includes some functions to reproduce the ``toy model'' data employed in https://arxiv.org/pdf/2308.09751
 
 Functions:
 - sample_latin_hypercube: Generate samples using Latin Hypercube Sampling (LHS) within given bounds.
 - bacco_emulator: Generate power spectrum using the baccoemu emulator.
 - generate_baccoemu_dataset: Generate a dataset using baccoemu emulator with specified cosmological and augmentation parameters.
+- generate_Akhmetzhanova_dataset: Generate a dataset using baccoemu emulator with specified cosmological and augmentation parameters.
 """
 
 import os
@@ -227,14 +229,177 @@ def generate_baccoemu_dataset(
     xx = bacco_emulator(
         baccoemu_input, kmax=kmax, return_kk=False, mode=mode_baccoemu, box=box, factor_kmin_cut=factor_kmin_cut
     )
-
     xx = np.reshape(xx, (NN_samples_cosmo, NN_samples_augs, xx.shape[-1]))
     
     # Reshape baccoemu_input to store all aug baryonic parameters
     extended_aug_param_keys = ['M_c', 'eta', 'beta', 'M1_z0_cen', 'theta_out', 'theta_inn', 'M_inn']
-    extended_aug_params = np.zeros((xx.shape[0], xx.shape[1], len(extended_aug_param_keys)))
+    extended_aug_params = np.zeros((NN_samples_cosmo, NN_samples_augs, len(extended_aug_param_keys)))
     for ii, key in enumerate(extended_aug_param_keys):
-        extended_aug_params[..., ii] = np.reshape(baccoemu_input[key], (xx.shape[0], xx.shape[1]))
+        extended_aug_params[..., ii] = np.reshape(baccoemu_input[key], (NN_samples_cosmo, NN_samples_augs))
+    
+    # Save data
+    if path_save is not None:
+        if not os.path.exists(path_save):
+            os.makedirs(path_save)
+        np.save(os.path.join(path_save, model_name + '_cosmos.npy'), cosmos)
+        np.save(os.path.join(path_save, model_name + '_xx.npy'), xx)
+        np.save(os.path.join(path_save, model_name + '_aug_params.npy'), aug_params)
+        np.save(os.path.join(path_save, model_name + '_extended_aug_params.npy'), extended_aug_params)
+    
+    return cosmos, xx, aug_params, extended_aug_params
+    
+    
+    
+
+def Akhmetzhanova_emulator(AA, BB, DD, k_pivot=0.5, k_F=7*10**-3, kmin=3, kmax=142, NN_k=140):
+    """
+    Generate Akhmetzhanova toy model Pks
+    
+    Parameters
+    ----------
+    AA : numpy.ndarray
+        array of toy cosmological parameters A
+    BB : numpy.ndarray
+        array of toy cosmological parameters B
+    DD : numpy.ndarray
+        array of toy baryonic parameters D
+    k_pivot : float, optional
+        scale at which the toy baryon effects kick in
+    k_F : float, optional
+        fundamental frequency for the toy simulation box
+    kmin : float, optional
+        min range k points
+    kmax : float, optional
+        max range k points
+    NN_k : float, optional
+        number of k points
+    
+    Returns
+    -------
+    tuple
+        Tuple containing the cosmological samples, power spectrum, augmentation parameters, and extended augmentation parameters.
+    """
+    
+    NN_cosmo = len(AA)
+    NN_augs = DD.shape[1]
+
+    AA = np.tile(AA[:, np.newaxis, np.newaxis], [1, NN_augs, NN_k])
+    BB = np.tile(BB[:, np.newaxis, np.newaxis], [1, NN_augs, NN_k])
+    DD = np.tile(DD[..., np.newaxis], [1, 1, NN_k])
+    CC = AA * (k_pivot**(BB-DD))
+
+    kk = np.linspace(kmin, kmax, NN_k)*k_F
+    kk = np.tile(kk[np.newaxis, np.newaxis], [NN_cosmo, NN_augs, 1])
+
+    Pk1 = AA * kk**BB
+    Pk2 = CC * kk**DD
+
+    index_cut = kk < k_pivot
+    Pk = np.zeros((NN_cosmo, NN_augs, NN_k))
+    Pk[index_cut] = Pk1[index_cut]
+    Pk[~index_cut] = Pk2[~index_cut]
+    
+    return np.log10(Pk)
+    
+    
+    
+def generate_Akhmetzhanova_dataset(
+    NN_samples_cosmo,
+    NN_samples_augs,
+    dict_bounds_cosmo=None,
+    dict_bounds_augs=None,
+    seed=0,
+    path_save=None,
+    model_name="ModelA",
+    k_pivot=0.5,
+    k_F=7*10**-3,
+    kmin=3,
+    kmax=142,
+    NN_k=140
+):
+    """
+    Generate a dataset using baccoemu emulator with specified cosmological and augmentation parameters.
+    
+    Parameters
+    ----------
+    NN_samples_cosmo : int
+        Number of cosmological samples.
+    NN_samples_augs : int
+        Number of augmentation samples.
+    dict_bounds_cosmo : dict, optional
+        Bounds for cosmological parameters, by default None.
+    dict_bounds_augs : dict, optional
+        Bounds for augmentation parameters, by default None.
+    seed : int, optional
+        Random seed for reproducibility, by default 0.
+    path_save : str, optional
+        Path to save the generated dataset, by default None.
+    model_name : str, optional
+        Model name for saved files, by default "ModelA".
+    k_pivot : float, optional
+        scale at which the toy baryon effects kick in
+    k_F : float, optional
+        fundamental frequency for the toy simulation box
+    kmin : float, optional
+        min range k points
+    kmax : float, optional
+        max range k points
+    NN_k : float, optional
+        number of k points
+    
+    Returns
+    -------
+    tuple
+        Tuple containing the cosmological samples, power spectrum, augmentation parameters, and extended augmentation parameters.
+    """
+    logging.info('Generating Akhmetzhanova dataset...')
+    
+    if dict_bounds_cosmo is None:
+        dict_bounds_cosmo = {
+            'A': [0.1, 1.],
+            'B': [-1., 0.]
+        }
+        
+    if dict_bounds_augs is None:
+        dict_bounds_augs = {
+            'D': [-0.5, 0.5]
+        }
+
+    # Sample cosmological parameter space
+    dict_bounds_sweep = {}
+    for key in dict_bounds_cosmo.keys():
+        if isinstance(dict_bounds_cosmo[key], list):
+            assert len(dict_bounds_cosmo[key]) == 2, "Please provide bounds in the format 'param_name = [min, max]'"
+            dict_bounds_sweep[key] = dict_bounds_cosmo[key]
+
+    if dict_bounds_sweep:
+        cosmos = sample_latin_hypercube(dict_bounds_sweep, N_points=NN_samples_cosmo, seed=seed)
+    else:
+        cosmos = np.zeros((NN_samples_cosmo, len(dict_bounds_cosmo.keys())))
+        for ii, key in enumerate(dict_bounds_cosmo.keys()):
+            cosmos[:, ii] = np.repeat(dict_bounds_cosmo[key], NN_samples_cosmo)
+    
+    # Sample augmentation parameter space
+    dict_bounds_sweep = {}
+    for key in dict_bounds_augs.keys():
+        if isinstance(dict_bounds_augs[key], list):
+            assert len(dict_bounds_augs[key]) == 2, "Please provide bounds in the format 'param_name = [min, max]'"
+            dict_bounds_sweep[key] = dict_bounds_augs[key]
+    
+    if dict_bounds_sweep:
+        aug_params = sample_latin_hypercube(dict_bounds_sweep, N_points=NN_samples_cosmo * NN_samples_augs, seed=seed)
+        np.random.shuffle(aug_params)
+    else:
+        aug_params = np.zeros((NN_samples_cosmo * NN_samples_augs, len(dict_bounds_sweep.keys())))
+        for ii, key in enumerate(dict_bounds_sweep.keys()):
+            aug_params[:, ii] = dict_bounds_sweep[key]
+
+    aug_params = np.reshape(aug_params, (NN_samples_cosmo, NN_samples_augs, aug_params.shape[-1]))
+
+    # Generate observations with baccoemu
+    
+    xx = Akhmetzhanova_emulator(cosmos[:, 0], cosmos[:, 1], aug_params[..., 0], k_pivot=k_pivot, k_F=k_F, kmin=kmin, kmax=kmax, NN_k=NN_k)
+    extended_aug_params = aug_params
     
     # Save data
     if path_save is not None:

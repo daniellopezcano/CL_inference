@@ -354,7 +354,7 @@ def SimCLR_loss(zz, TT=1.):
     NN_latent = zz.shape[-1]
     
     tmp_zz = torch.Tensor.reshape(zz, (NN*NN_augs, NN_latent))
-    tmp_zz = torch.Tensor.repeat_interleave(tmp_zz[np.newaxis], NN*NN_augs, dim=0)
+    tmp_zz = torch.Tensor.repeat_interleave(tmp_zz[None, ...], NN*NN_augs, dim=0)
     tmp_zzT = torch.transpose(tmp_zz, 0, 1)
     cos_sim = torch.exp(torch.functional.F.cosine_similarity(tmp_zz, tmp_zzT, dim=-1) / TT)
     
