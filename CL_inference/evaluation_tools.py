@@ -1,5 +1,3 @@
-CONFIG_FILE_NAME = "config.yaml"
-
 import os
 import sys
 import yaml
@@ -15,7 +13,7 @@ from . import train_tools
 from . import plot_utils
 
 
-def load_configs_files(models_path, selected_sweeps, wandb_entity):
+def load_configs_files(models_path, selected_sweeps, wandb_entity, config_file_name="config.yaml"):
     """
     Load configuration files for selected sweeps.
 
@@ -32,13 +30,13 @@ def load_configs_files(models_path, selected_sweeps, wandb_entity):
             path_to_config=models_path + "/"+ sweep_name
             configs[sweep_name] = train_tools.load_config_file(
                 path_to_config=path_to_config,
-                config_file_name=CONFIG_FILE_NAME
+                config_file_name=config_file_name
             )
         else:
             path_to_config=models_path+"/"+sweep_name
             configs[sweep_name] = load_config_file_wandb_format(
                 path_to_config=path_to_config,
-                config_file_name=CONFIG_FILE_NAME,
+                config_file_name=config_file_name,
                 wandb_entity=wandb_entity
             )
             
@@ -89,7 +87,7 @@ def load_config_file_wandb_format(path_to_config, config_file_name, wandb_entity
     return config
     
     
-def download_config_file_from_api_wandb(wandb_entity, download_path, wandb_project, sweep_name):
+def download_config_file_from_api_wandb(wandb_entity, download_path, wandb_project, sweep_name, config_file_name="config.yaml"):
     import wandb
     import shutil
     """
@@ -122,10 +120,10 @@ def download_config_file_from_api_wandb(wandb_entity, download_path, wandb_proje
         
         # Download the configuration file for the found run
         run = api.run(f"{wandb_entity}/{wandb_project}/{target_run_id}")
-        config_file = run.file(CONFIG_FILE_NAME)
+        config_file = run.file(config_file_name)
         config_file.download(replace=True)
-        shutil.move("./" + CONFIG_FILE_NAME, os.path.join(download_path, CONFIG_FILE_NAME))
-        with open(os.path.join(download_path, CONFIG_FILE_NAME)) as ff:
+        shutil.move("./" + config_file_name, os.path.join(download_path, config_file_name))
+        with open(os.path.join(download_path, config_file_name)) as ff:
             config_data = yaml.safe_load(ff)
     else:
         logging.error(f"ERROR Run '{sweep_name}' found="+str(found))
@@ -212,7 +210,7 @@ def reload_models(models_path, evalute_mode, configs, device):
     return models_encoder, models_inference
     
     
-def compute_dataset_results(config, sweep_name_load_norm_dset, list_model_names, models_encoder, models_inference, dset_key="TEST", use_all_dataset_augs_ordered=True, indexes_cosmo=None, indexes_augs=None):
+def compute_dataset_results(config, sweep_name_load_norm_dset, list_model_names, models_encoder, models_inference, dset_key="TEST", use_all_dataset_augs_ordered=True, indexes_cosmo=None, indexes_augs=None, NN_augs_batch=None, seed=0):
     """
     Compute dataset results for given configurations and models.
 
@@ -232,7 +230,10 @@ def compute_dataset_results(config, sweep_name_load_norm_dset, list_model_names,
     """
     if next(models_encoder[list(models_encoder.keys())[0]].parameters()).is_cuda: device = "cuda"
     else: device = "cpu"
-        
+
+    if NN_augs_batch == None:
+        NN_augs_batch = config['NN_augs_batch']
+
     dset, len_models = data_tools.def_data_loader(
         path_load             = os.path.join(config['path_load'], dset_key),
         list_model_names      = list_model_names,
@@ -241,7 +242,7 @@ def compute_dataset_results(config, sweep_name_load_norm_dset, list_model_names,
         include_baryon_params = config['include_baryon_params'],
         normalize             = config['normalize'],
         path_load_norm        = os.path.join(config['path_save'], sweep_name_load_norm_dset),
-        NN_augs_batch         = config['NN_augs_batch'],
+        NN_augs_batch         = NN_augs_batch,
         return_len_models     = True
     )
     
@@ -249,10 +250,9 @@ def compute_dataset_results(config, sweep_name_load_norm_dset, list_model_names,
         indexes_augs=np.repeat(np.arange(dset.NN_augs)[np.newaxis], repeats=len(indexes_cosmo), axis=0)
     
     theta_true, xx, aug_params, indexes_cosmo, indexes_augs = dset(
-        0, seed=0, to_torch=True, device=device, use_all_dataset_augs_ordered=use_all_dataset_augs_ordered,
+        0, seed=seed, to_torch=True, device=device, use_all_dataset_augs_ordered=use_all_dataset_augs_ordered,
         indexes_cosmo=indexes_cosmo, indexes_augs=indexes_augs, return_indexes_sampled=True
     )
-    
     theta_true = torch.repeat_interleave(theta_true, xx.shape[1], axis=0)
     if aug_params is not None:
         aug_params = torch.reshape(aug_params, (aug_params.shape[0]*aug_params.shape[1], aug_params.shape[-1]))

@@ -662,7 +662,7 @@ def plot_dataset_Pk(dset_norm_mean, dset_norm_std, xx, list_model_names, len_mod
     if plot_as_Pk:
         axs[0].set_ylabel(r'$P(k) \left[ \left(h^{-1} \mathrm{Mpc}\right)^{3} \right]$')
         axs[1].set_xlabel(r'$\mathrm{Wavenumber}\, k \left[ h\, \mathrm{Mpc}^{-1} \right]$')
-        axs[1].set_ylabel(r'$P_\mathrm{Model}(k) / P_\mathrm{mean\, , train}(k)$')
+        axs[1].set_ylabel(r'$P_\mathrm{Model}(k) / \left\langle P(k) \right\rangle$')
         xx_plot = 10**(xx*dset_norm_std + dset_norm_mean)
         # for kmax_plot in np.array([0.6, 0.2, -0.2, -0.6, -1.0, -1.4]):
             # axs[0].axvline(10**kmax_plot, c='k', ls=':', lw=1.)

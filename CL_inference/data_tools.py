@@ -1,9 +1,3 @@
-NUMPY_FILE_NAME_COSMOS   = "cosmos.npy"
-NUMPY_FILE_NAME_XX       = "xx.npy"
-NUMPY_FILE_NAME_EXT_AUGS = "extended_aug_params.npy"
-NUMPY_FILE_NAME_MEAN     = "mean.npy"
-NUMPY_FILE_NAME_STD      = "std.npy"
-
 """
 This module contains functions for loading generated datasets and defining dataloader structures
 that can be used for drawing batches during training and other utilities
@@ -26,7 +20,7 @@ import ipdb
 import logging
 
 
-def load_stored_data(path_load, list_model_names, return_len_models=False, include_baryon_params=False):
+def load_stored_data(path_load, list_model_names, return_len_models=False, include_baryon_params=False, np_name_cosmos="cosmos.npy", np_name_xx="xx.npy", np_name_ext_augs="extended_aug_params.npy"):
     """
     Load stored data from specified path and model names.
     
@@ -53,7 +47,7 @@ def load_stored_data(path_load, list_model_names, return_len_models=False, inclu
     len_models = []
     for ii, model_name in enumerate(list_model_names):
         logging.info('Loading ' + model_name + '...')
-        with open(os.path.join(path_load, model_name + '_' + NUMPY_FILE_NAME_COSMOS), 'rb') as ff:
+        with open(os.path.join(path_load, model_name + '_' + np_name_cosmos), 'rb') as ff:
             tmp_theta = np.load(ff)
             if ii == 0:
                 theta = tmp_theta
@@ -61,10 +55,10 @@ def load_stored_data(path_load, list_model_names, return_len_models=False, inclu
                 assert np.sum(tmp_theta != theta) == 0, "All theta values must coincide for the different models!"
                 theta = tmp_theta
             
-        with open(os.path.join(path_load, model_name + '_' + NUMPY_FILE_NAME_XX), 'rb') as ff:
+        with open(os.path.join(path_load, model_name + '_' + np_name_xx), 'rb') as ff:
             loaded_xx = np.load(ff)
         if include_baryon_params:
-            with open(os.path.join(path_load, model_name + '_' + NUMPY_FILE_NAME_EXT_AUGS), 'rb') as ff:
+            with open(os.path.join(path_load, model_name + '_' + np_name_ext_augs), 'rb') as ff:
                 loaded_aug_params = np.load(ff)
             
         len_models.append(loaded_xx.shape[1])
@@ -190,7 +184,7 @@ class data_loader():
     
     def __init__(
         self, theta, xx, aug_params=None, normalize=False, path_save_norm=None, path_load_norm=None,
-        NN_augs_batch=None, add_noise_Pk=None, kmax=0.6, box=2000, gaussian_error_counter_tolerance=20, factor_kmin_cut=4
+        NN_augs_batch=None, add_noise_Pk=None, kmax=0.6, box=2000, gaussian_error_counter_tolerance=20, factor_kmin_cut=4, np_name_mean="mean.npy", np_name_std="std.npy"
     ):
         logging.info('Initializing data loader...')
         
@@ -199,7 +193,7 @@ class data_loader():
         self.aug_params = aug_params
         self.NN_cosmos  = self.theta.shape[0]
         self.NN_augs    = self.xx.shape[1]
-        
+
         if normalize and (path_save_norm is not None) and (path_load_norm is None):
             logging.info('Normalizing data and saving normalization parameters...')
             tmp_xx = np.reshape(self.xx, tuple([self.xx.shape[0] * self.xx.shape[1],] + list(self.xx.shape[2:])))
@@ -207,14 +201,14 @@ class data_loader():
             tmp_std = np.std(tmp_xx, axis=0)
             if not os.path.exists(path_save_norm):
                 os.makedirs(path_save_norm)
-            np.save(os.path.join(path_save_norm, NUMPY_FILE_NAME_MEAN), tmp_mean)
-            np.save(os.path.join(path_save_norm, NUMPY_FILE_NAME_STD), tmp_std)
+            np.save(os.path.join(path_save_norm, np_name_mean), tmp_mean)
+            np.save(os.path.join(path_save_norm, np_name_std), tmp_std)
             self.norm_mean = tmp_mean
             self.norm_std = tmp_std
         elif normalize and (path_load_norm is not None) and (path_save_norm is None):
             logging.info('Loading normalization parameters...')
-            self.norm_mean = np.load(os.path.join(path_load_norm, NUMPY_FILE_NAME_MEAN))
-            self.norm_std = np.load(os.path.join(path_load_norm, NUMPY_FILE_NAME_STD))
+            self.norm_mean = np.load(os.path.join(path_load_norm, np_name_mean))
+            self.norm_std = np.load(os.path.join(path_load_norm, np_name_std))
         else:
             self.norm_mean = 0.
             self.norm_std = 1.
@@ -383,7 +377,7 @@ class data_loader_Akhmetzhanova():
     
     def __init__(
         self, theta, xx, aug_params=None, normalize=False, path_save_norm=None, path_load_norm=None,
-        NN_augs_batch=None, add_noise_Pk=None, kmin=3., kmax=142., k_F=0.6, NN_k=140
+        NN_augs_batch=None, add_noise_Pk=None, kmin=3., kmax=142., k_F=0.6, NN_k=140, np_name_mean="mean.npy", np_name_std="std.npy"
     ):
         logging.info('Initializing data loader...')
         
@@ -400,14 +394,14 @@ class data_loader_Akhmetzhanova():
             tmp_std = np.std(tmp_xx, axis=0)
             if not os.path.exists(path_save_norm):
                 os.makedirs(path_save_norm)
-            np.save(os.path.join(path_save_norm, NUMPY_FILE_NAME_MEAN), tmp_mean)
-            np.save(os.path.join(path_save_norm, NUMPY_FILE_NAME_STD), tmp_std)
+            np.save(os.path.join(path_save_norm, np_name_mean), tmp_mean)
+            np.save(os.path.join(path_save_norm, np_name_std), tmp_std)
             self.norm_mean = tmp_mean
             self.norm_std = tmp_std
         elif normalize and (path_load_norm is not None) and (path_save_norm is None):
             logging.info('Loading normalization parameters...')
-            self.norm_mean = np.load(os.path.join(path_load_norm, NUMPY_FILE_NAME_MEAN))
-            self.norm_std = np.load(os.path.join(path_load_norm, NUMPY_FILE_NAME_STD))
+            self.norm_mean = np.load(os.path.join(path_load_norm, np_name_mean))
+            self.norm_std = np.load(os.path.join(path_load_norm, np_name_std))
         else:
             self.norm_mean = 0.
             self.norm_std = 1.

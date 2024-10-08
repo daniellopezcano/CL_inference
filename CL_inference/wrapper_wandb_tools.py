@@ -113,15 +113,6 @@ def wrapper_train_from_config(
 ):
     """
     Wrapper function to train a model based on provided configuration.
-    
-    Parameters
-    ----------
-    (numerous parameters related to model configuration and training, see original function definition)
-    
-    Returns
-    -------
-    float
-        Minimum validation loss.
     """
     logging.info('Starting training with configuration...')
     

@@ -341,7 +341,7 @@ def eval_single_epoch(
         
     if val_loss['loss'] < min_val_loss:
         min_val_loss = val_loss['loss']
-        logging.info(f"Saving Model")
+        logging.info(f"Saving Model"+path_save)
         if path_save!=None:
             if train_mode == "train_CL":
                 torch.save(model_encoder.state_dict(), os.path.join(path_save, 'model_encoder.pt'))
