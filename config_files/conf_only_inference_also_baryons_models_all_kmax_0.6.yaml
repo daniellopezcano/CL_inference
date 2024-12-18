@@ -7,10 +7,13 @@ path_save : "/cosmos_storage/home/dlopez/Projects/CL_inference/models/only_infer
 path_load               : "/cosmos_storage/home/dlopez/Projects/CL_inference/DATASETS/DATASET_kmax_0.6/"
 list_model_names        : ["Model_vary_all"]
 normalize               : True
-NN_augs_batch           : 1
-add_noise_Pk            : "cosmic_var_gauss"
-kmax                    : 0.6
+NN_augs_batch           : 2
 include_baryon_params   : True
+dset_type               : "baccoemu"
+dset_dict               : {
+    add_noise_Pk : "cosmic_var_gauss",
+    kmax         : .6
+}
 
 # -------------------- arquitechture -------------------- #
     
